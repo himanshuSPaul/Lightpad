@@ -10,14 +10,30 @@
 
     <div id="body-row">
     <aside id="sidebar">
-      <div id="sidebar-head">
-        <span>Explorer</span>
-        <span class="spacer"></span>
-        <button data-cmd="refreshTree" title="Refresh">⟳</button>
-        <button data-cmd="collapseTree" title="Collapse all">⊟</button>
-      </div>
-      <div id="explorer-title"></div>
-      <div id="tree"></div>
+      <section id="explorer-pane">
+        <div class="pane-head">
+          <span>Explorer</span>
+          <span class="spacer"></span>
+          <button data-cmd="refreshTree" title="Refresh">⟳</button>
+          <button data-cmd="collapseTree" title="Collapse all">⊟</button>
+          <button data-cmd="explorer" title="Hide explorer">×</button>
+        </div>
+        <div id="explorer-title"></div>
+        <div id="tree"></div>
+      </section>
+      <div id="doclist-resizer"></div>
+      <section id="doclist-pane">
+        <div class="pane-head">
+          <span>Document List</span>
+          <span class="spacer"></span>
+          <button data-cmd="docList" title="Hide document list">×</button>
+        </div>
+        <div id="doclist-cols">
+          <button data-sort="name">Name <span></span></button>
+          <button data-sort="ext">Ext. <span></span></button>
+        </div>
+        <div id="doclist"></div>
+      </section>
     </aside>
     <div id="side-resizer"></div>
     <main id="workspace">

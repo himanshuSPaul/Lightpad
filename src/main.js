@@ -1,4 +1,12 @@
-import { basicSetup } from "codemirror";
+import {
+  lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor,
+  rectangularSelection, crosshairCursor, highlightActiveLine,
+} from "@codemirror/view";
+import { indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching, foldKeymap } from "@codemirror/language";
+import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
+import { folding, foldAll, unfoldAll, foldCurrent, unfoldCurrent, foldLevel, unfoldLevel } from "./folding.js";
 import { EditorState, Compartment } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { indentWithTab, undo, redo, selectAll, toggleComment } from "@codemirror/commands";
@@ -35,6 +43,7 @@ const settings = {
   theme: store.get("theme", "dark"),
   wrap: store.get("wrap", false),
   sidebar: store.get("sidebar", true),
+  docList: store.get("docList", false),
   editorFont: store.get("editorFont", 14),
   termFont: store.get("termFont", 13),
 };
@@ -52,11 +61,33 @@ let nextTabId = 1;
 
 const view = new EditorView({ parent: $("editor") });
 
+// CodeMirror's basicSetup, with Notepad++-style folding in place of the default fold gutter.
+const editorSetup = [
+  lineNumbers(),
+  highlightActiveLineGutter(),
+  highlightSpecialChars(),
+  history(),
+  folding,
+  drawSelection(),
+  dropCursor(),
+  EditorState.allowMultipleSelections.of(true),
+  indentOnInput(),
+  syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+  bracketMatching(),
+  closeBrackets(),
+  autocompletion(),
+  rectangularSelection(),
+  crosshairCursor(),
+  highlightActiveLine(),
+  highlightSelectionMatches(),
+  keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap]),
+];
+
 function makeState(text) {
   return EditorState.create({
       doc: text,
       extensions: [
-        basicSetup,
+        editorSetup,
         keymap.of([indentWithTab]),
         langConf.of([]),
         themeConf.of(settings.theme === "dark" ? oneDark : []),
@@ -270,7 +301,66 @@ async function restoreSession() {
 
 // ---------- UI ----------
 
+// ---------- Document List (all open tabs, in a pane under the explorer) ----------
+
+let docSort = store.get("docSort", { key: null, dir: 1 });
+
+function splitName(name) {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+}
+
+const diskIcon = (color) =>
+  `<svg viewBox="0 0 16 16" width="14" height="14"><path d="M2 2h10l2 2v10H2z" fill="${color}"/><path d="M4.5 2h6v4h-6z" fill="#fff" opacity=".9"/><path d="M4 9h8v5H4z" fill="#fff" opacity=".35"/></svg>`;
+
+function renderDocList() {
+  if (!settings.docList) return;
+  let list = [...tabs];
+  if (docSort.key) {
+    const pick = (t) => splitName(t.name)[docSort.key === "ext" ? 1 : 0].toLowerCase();
+    list.sort((a, b) => pick(a).localeCompare(pick(b), undefined, { numeric: true }) * docSort.dir);
+  }
+  for (const b of document.querySelectorAll("#doclist-cols button")) {
+    b.querySelector("span").textContent = b.dataset.sort === docSort.key ? (docSort.dir > 0 ? "▲" : "▼") : "";
+  }
+  $("doclist").replaceChildren(
+    ...list.map((t) => {
+      const [name, ext] = splitName(t.name);
+      const row = document.createElement("div");
+      const dirty = isDirty(t);
+      row.className = "doc-row" + (t === current ? " active" : "");
+      row.title = (t.path || t.name) + (dirty ? " (unsaved changes)" : "");
+      row.innerHTML = `<span class="doc-icon">${diskIcon(dirty ? "#dc2626" : "#3b82f6")}</span>`;
+      const n = document.createElement("span");
+      n.className = "doc-name";
+      n.textContent = name;
+      const x = document.createElement("span");
+      x.className = "doc-ext";
+      x.textContent = ext;
+      row.append(n, x);
+      row.onmousedown = (e) => {
+        if (e.button === 1) return closeTab(t), e.preventDefault();
+        if (e.button === 0) activate(t);
+      };
+      return row;
+    })
+  );
+  $("doclist").querySelector(".active")?.scrollIntoView({ block: "nearest" });
+}
+
+for (const b of document.querySelectorAll("#doclist-cols button")) {
+  b.onclick = () => {
+    // Click cycles: ascending, descending, back to tab order.
+    if (docSort.key !== b.dataset.sort) docSort = { key: b.dataset.sort, dir: 1 };
+    else if (docSort.dir > 0) docSort.dir = -1;
+    else docSort = { key: null, dir: 1 };
+    store.set("docSort", docSort);
+    renderDocList();
+  };
+}
+
 function renderTabs() {
+  renderDocList();
   const bar = $("tabs");
   bar.replaceChildren(
     ...tabs.map((t) => {
@@ -378,11 +468,28 @@ async function toggleTerminal(force) {
   }
 }
 
+// The left side holds the explorer and/or the document list; it hides when both are off.
+function layoutSidebar() {
+  const any = settings.sidebar || settings.docList;
+  $("sidebar").hidden = !any;
+  $("side-resizer").hidden = !any;
+  $("explorer-pane").hidden = !settings.sidebar;
+  $("doclist-pane").hidden = !settings.docList;
+  $("doclist-resizer").hidden = !(settings.sidebar && settings.docList);
+  $("doclist-pane").classList.toggle("fill", !settings.sidebar);
+  renderDocList();
+}
+
 function toggleSidebar(force) {
   settings.sidebar = force ?? !settings.sidebar;
   store.set("sidebar", settings.sidebar);
-  $("sidebar").hidden = !settings.sidebar;
-  $("side-resizer").hidden = !settings.sidebar;
+  layoutSidebar();
+}
+
+function toggleDocList(force) {
+  settings.docList = force ?? !settings.docList;
+  store.set("docList", settings.docList);
+  layoutSidebar();
 }
 
 // Language picker: type to filter, Enter or click to apply to the current tab.
@@ -457,6 +564,7 @@ const commands = {
   open: openFiles,
   openFolder,
   explorer: () => toggleSidebar(),
+  docList: () => toggleDocList(),
   refreshTree: () => explorer.render(),
   collapseTree: () => explorer.collapseAll(),
   save: () => save(),
@@ -522,6 +630,9 @@ function copy(cut) {
   view.focus();
 }
 
+const levelItems = (fn, keys) =>
+  [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ label: String(n), shortcut: keys + n, run: editorCmd((v) => fn(v, n)) }));
+
 const MENU_LANGUAGES = [
   "Plain Text", "Batch File", "C", "C#", "C++", "CSS", "Go", "HTML", "Java", "JavaScript", "JSON", "Markdown",
   "PHP", "PowerShell", "Python", "Ruby", "Rust", "Shell", "SQL", "TypeScript", "XML", "YAML",
@@ -577,9 +688,17 @@ createMenubar([
     label: "View",
     items: () => [
       { label: "Explorer", shortcut: "Ctrl+B", checked: settings.sidebar, run: commands.explorer },
+      { label: "Document List", checked: settings.docList, run: commands.docList },
       { label: "Terminal", shortcut: "Ctrl+`", checked: !$("terminal-panel").hidden, run: commands.terminal },
       "-",
       { label: "Word Wrap", shortcut: "Alt+Z", checked: settings.wrap, run: commands.wrap },
+      "-",
+      { label: "Fold All", shortcut: "Alt+0", run: editorCmd(foldAll) },
+      { label: "Unfold All", shortcut: "Alt+Shift+0", run: editorCmd(unfoldAll) },
+      { label: "Fold Current Level", shortcut: "Ctrl+Alt+F", run: editorCmd(foldCurrent) },
+      { label: "Unfold Current Level", shortcut: "Ctrl+Alt+Shift+F", run: editorCmd(unfoldCurrent) },
+      { label: "Fold Level", submenu: () => levelItems(foldLevel, "Alt+") },
+      { label: "Unfold Level", submenu: () => levelItems(unfoldLevel, "Alt+Shift+") },
       { label: "Dark Theme", checked: settings.theme === "dark", run: commands.theme },
       "-",
       { label: "Zoom In (Ctrl+Mouse Wheel Up)", shortcut: "Ctrl+=", run: () => zoom("editor", 1) },
@@ -647,6 +766,23 @@ $("side-resizer").onpointerdown = (e) => {
 };
 $("sidebar").style.width = store.get("sidebarWidth", 240) + "px";
 
+// Drag the bar between the explorer and the document list to resize them.
+$("doclist-resizer").onpointerdown = (e) => {
+  const pane = $("doclist-pane");
+  const startY = e.clientY;
+  const startH = pane.offsetHeight;
+  e.target.setPointerCapture(e.pointerId);
+  e.target.onpointermove = (m) => {
+    const max = $("sidebar").offsetHeight - 120;
+    pane.style.height = Math.max(80, Math.min(max, startH - (m.clientY - startY))) + "px";
+  };
+  e.target.onpointerup = () => {
+    e.target.onpointermove = null;
+    store.set("docListHeight", pane.offsetHeight);
+  };
+};
+$("doclist-pane").style.height = store.get("docListHeight", 220) + "px";
+
 // Global shortcuts
 window.addEventListener(
   "keydown",
@@ -658,6 +794,12 @@ window.addEventListener(
     else if (ctrl && !e.altKey && ["Minus", "NumpadSubtract"].includes(e.code)) cmd = () => zoom(lastPane, -1);
     else if (ctrl && !e.altKey && ["Digit0", "Numpad0", "NumpadDivide"].includes(e.code)) cmd = () => zoom(lastPane, 0);
     else if (ctrl && e.altKey && e.code === "KeyS") cmd = saveAll;
+    else if (ctrl && e.altKey && e.code === "KeyF") cmd = editorCmd(e.shiftKey ? unfoldCurrent : foldCurrent);
+    else if (e.altKey && !ctrl && /^Digit[0-8]$/.test(e.code) && lastPane === "editor") {
+      const n = +e.code.slice(5);
+      if (n === 0) cmd = editorCmd(e.shiftKey ? unfoldAll : foldAll);
+      else cmd = editorCmd((v) => (e.shiftKey ? unfoldLevel : foldLevel)(v, n));
+    }
     else if (ctrl && !e.shiftKey && e.code === "KeyH" && lastPane === "editor") cmd = openReplace;
     else if (ctrl && !e.shiftKey && e.code === "KeyG" && lastPane === "editor") cmd = editorCmd(gotoLine);
     else if (ctrl && !e.shiftKey && e.code === "KeyN") cmd = commands.new;
@@ -711,5 +853,5 @@ explorer.init({
     terminal.newTerminal(dir);
   },
 });
-toggleSidebar(settings.sidebar);
+layoutSidebar();
 restoreSession();

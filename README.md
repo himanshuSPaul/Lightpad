@@ -10,6 +10,8 @@ The release binary is about 4 MB.
 - Tabs, open / save / save as, recent files, drag-and-drop files or folders to open
 - Syntax highlighting for 140+ languages, picked automatically from the file name.
   Change it from the Language menu or by clicking the language in the status bar.
+- Notepad++-style code folding (click the boxes in the margin, or View > Fold All / Fold Level)
+- Document List pane (View > Document List) showing every open file
 - Line numbers, find/replace (Ctrl+F), word wrap, light/dark theme
 - Keeps CRLF/LF line endings and the file's encoding (UTF-8, UTF-8 BOM, UTF-16, Windows-1252)
 - Saves are crash-safe: written to a temp file, then swapped in
@@ -34,6 +36,9 @@ The release binary is about 4 MB.
 | Ctrl+= / Ctrl+- / Ctrl+0, Ctrl+mouse wheel | Zoom in / out / reset the editor or terminal (whichever has focus, or is under the mouse) |
 | Ctrl+H / Ctrl+G / Ctrl+/ | Replace, go to line, toggle comment |
 | Ctrl+Alt+S | Save all |
+| Alt+0 / Alt+Shift+0 | Fold all / unfold all |
+| Alt+1..8 / Alt+Shift+1..8 | Fold / unfold a level |
+| Ctrl+Alt+F / Ctrl+Alt+Shift+F | Fold / unfold the current block |
 | Alt+F, Alt+E, Alt+V, Alt+L, Alt+T | Open the File, Edit, View, Language, Terminal menus |
 | Ctrl+Shift+C / V | Copy / paste in terminal |
 
@@ -64,6 +69,8 @@ installers on every push once the code is on GitHub.
 
 - `src/main.js` – tabs, files, toolbar, shortcuts, session restore
 - `src/explorer.js` – folder tree sidebar
+- `src/folding.js` – code folding (fold boxes, bracket folding, fold levels)
+- `src/menu.js` – the menu bar
 - `src/terminal.js` – xterm.js terminal panel
 - `src/languages.js` – language list (CodeMirror language-data plus Windows batch files)
 - `src-tauri/src/lib.rs` – app setup and folder listing
