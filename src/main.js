@@ -271,6 +271,7 @@ function saveSession() {
       name: t.name,
       content: isDirty(t) ? t.state.doc.toString() : null,
       lang: t.langManual ? t.lang : null,
+      pinned: !!t.pinned,
     })),
   });
 }
@@ -288,9 +289,10 @@ async function restoreSession() {
         } catch {}
         if (file === null && t.content === null) continue; // file is gone
         const saved = file?.text ?? "";
-        newTab({ path: t.path, text: t.content ?? saved, saved, lang: t.lang, encoding: file?.encoding });
+        newTab({ path: t.path, text: t.content ?? saved, saved, lang: t.lang, encoding: file?.encoding }).pinned = !!t.pinned;
       } else {
         const tab = newTab({ text: t.content ?? "", saved: "", lang: t.lang });
+        tab.pinned = !!t.pinned;
         tab.name = t.name || tab.name;
       }
     }
@@ -365,7 +367,7 @@ function renderTabs() {
   bar.replaceChildren(
     ...tabs.map((t) => {
       const el = document.createElement("div");
-      el.className = "tab" + (t === current ? " active" : "") + (isDirty(t) ? " dirty" : "");
+      el.className = "tab" + (t === current ? " active" : "") + (isDirty(t) ? " dirty" : "") + (t.pinned ? " pinned" : "");
       el.title = t.path || t.name;
       el.onmousedown = (e) => {
         if (e.button === 1) return closeTab(t), e.preventDefault();
@@ -373,6 +375,13 @@ function renderTabs() {
       };
       const label = document.createElement("span");
       label.textContent = t.name;
+      if (t.pinned) {
+        const pin = document.createElement("i");
+        pin.className = "pin";
+        pin.title = "Pinned (right-click the file in the explorer to unpin)";
+        pin.textContent = "📌";
+        el.append(pin);
+      }
       const x = document.createElement("button");
       x.className = "close";
       x.textContent = "×";
@@ -599,8 +608,16 @@ async function saveAll() {
   for (const t of [...tabs]) if (isDirty(t) && !(await save(t))) return;
 }
 
+// Pinned tabs stay at the start of the tab bar and are kept by Close All.
+function togglePin(tab) {
+  tab.pinned = !tab.pinned;
+  tabs = [...tabs.filter((t) => t.pinned), ...tabs.filter((t) => !t.pinned)];
+  renderTabs();
+  saveSessionSoon();
+}
+
 async function closeAll() {
-  for (const t of [...tabs]) {
+  for (const t of tabs.filter((t) => !t.pinned)) {
     const before = tabs.length;
     await closeTab(t);
     if (tabs.length === before) return; // cancelled
@@ -845,12 +862,53 @@ window.addEventListener("beforeunload", saveSession);
 applyZoom();
 document.documentElement.dataset.theme = settings.theme;
 terminal.setTerminalTheme(settings.theme);
+// Paths under `dir` (or `dir` itself), whichever separator the OS uses.
+const isUnder = (path, dir) => path === dir || path.startsWith(dir + "/") || path.startsWith(dir + "\\");
+
 explorer.init({
   openFile: openPath,
   changed: saveSessionSoon,
   openTerminal: (dir) => {
     showTerminalPanel(true);
     terminal.newTerminal(dir);
+  },
+  openFolder,
+  showError,
+  confirm: async (text, okLabel) =>
+    (await message(text, { title: "Lightpad", kind: "warning", buttons: { ok: okLabel, cancel: "Cancel" } })) !== "Cancel",
+  tabFor: (path) => tabs.find((t) => t.path === path),
+  save: (tab) => save(tab),
+  saveAs: (tab) => save(tab, true),
+  close: (tab) => closeTab(tab),
+  togglePin: async (path) => {
+    let tab = tabs.find((t) => t.path === path);
+    if (!tab) {
+      await openPath(path);
+      tab = tabs.find((t) => t.path === path);
+    }
+    if (tab) togglePin(tab);
+  },
+  // A file or folder was renamed or moved: keep its open tabs pointing at the new place.
+  renamed: (from, to) => {
+    for (const t of tabs) {
+      if (!t.path || !isUnder(t.path, from)) continue;
+      t.path = to + t.path.slice(from.length);
+      t.name = baseName(t.path);
+      if (!t.langManual) setLanguage(t, detectLanguage(t.path));
+    }
+    renderTabs();
+    renderStatus();
+    saveSessionSoon();
+  },
+  // Deleted: close its tabs, except ones with unsaved edits, which stay open so nothing is lost.
+  deleted: (path) => {
+    for (const t of tabs.filter((t) => t.path && isUnder(t.path, path) && !isDirty(t))) {
+      tabs.splice(tabs.indexOf(t), 1);
+      if (t === current) current = null;
+    }
+    if (!current) activate(tabs[0] || newTab());
+    else renderTabs();
+    saveSessionSoon();
   },
 });
 layoutSidebar();

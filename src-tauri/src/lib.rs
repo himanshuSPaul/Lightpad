@@ -1,4 +1,5 @@
 mod files;
+mod fsops;
 mod pty;
 
 use std::fs;
@@ -47,6 +48,11 @@ pub fn run() {
             files::write_file,
             file_exists,
             list_dir,
+            fsops::create_file,
+            fsops::create_dir,
+            fsops::rename_path,
+            fsops::delete_path,
+            fsops::paste_path,
             pty::pty_spawn,
             pty::pty_write,
             pty::pty_resize,

@@ -6,7 +6,9 @@ The release binary is about 4 MB.
 
 ## Features
 
-- File explorer sidebar: open a folder, expand folders, click a file to open it
+- File explorer sidebar: open a folder, expand folders, click a file to open it.
+  Right-click for New File/Folder, Cut, Copy, Paste, Rename (F2), Delete (to the Recycle Bin),
+  Copy Path, Copy Relative Path, Open in Terminal, Save, Save As, Pin Tab and Close
 - Tabs, open / save / save as, recent files, drag-and-drop files or folders to open
 - Syntax highlighting for 140+ languages, picked automatically from the file name.
   Change it from the Language menu or by clicking the language in the status bar.
@@ -74,5 +76,6 @@ installers on every push once the code is on GitHub.
 - `src/terminal.js` – xterm.js terminal panel
 - `src/languages.js` – language list (CodeMirror language-data plus Windows batch files)
 - `src-tauri/src/lib.rs` – app setup and folder listing
+- `src-tauri/src/fsops.rs` – explorer file operations (never overwrite; delete goes to the Recycle Bin)
 - `src-tauri/src/files.rs` – reading and saving files (encodings, crash-safe saves, size limit)
 - `src-tauri/src/pty.rs` – shell sessions on a real pseudo-terminal (ConPTY on Windows)
