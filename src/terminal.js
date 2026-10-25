@@ -56,7 +56,9 @@ export async function newTerminal(cwd) {
   }
   const tab = document.createElement("button");
   tab.className = "term-tab";
-  tab.textContent = `Terminal ${id + 1}`;
+  // Name each terminal after the folder it started in.
+  tab.textContent = cwd ? cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || cwd : `Terminal ${id + 1}`;
+  tab.title = cwd || "Home folder";
   tab.onclick = () => activate(id);
   tabList.appendChild(tab);
 

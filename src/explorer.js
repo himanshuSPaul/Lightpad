@@ -8,6 +8,7 @@ let expanded = new Set();
 let activePath = null;
 let onOpen = () => {};
 let onChange = () => {};
+let onTerminal = () => {};
 
 const signature = (container) =>
   [...container.querySelectorAll(".node")].map((n) => n.title + n.querySelector(".chevron")?.className).join("|");
@@ -78,9 +79,11 @@ async function renderDir(path, depth, container) {
       const kids = document.createElement("div");
       container.append(kids);
       el.onclick = () => toggle(entry.path, el, kids, depth + 1);
+      el.oncontextmenu = (e) => showMenu(e, entry.path, entry.path);
       if (expanded.has(entry.path)) await renderDir(entry.path, depth + 1, kids);
     } else {
       el.onclick = () => onOpen(entry.path);
+      el.oncontextmenu = (e) => showMenu(e, entry.path, entry.path.replace(/[\\/][^\\/]*$/, ""));
     }
   }
 }
@@ -121,9 +124,39 @@ export async function render() {
   tree.scrollTop = scroll;
 }
 
-export function init({ openFile, changed }) {
+// Right-click menu on explorer items.
+const menu = document.createElement("ul");
+menu.id = "ctx-menu";
+menu.hidden = true;
+document.body.append(menu);
+document.addEventListener("click", () => (menu.hidden = true));
+document.addEventListener("keydown", (e) => e.key === "Escape" && (menu.hidden = true));
+
+function showMenu(e, path, dir) {
+  e.preventDefault();
+  const items = [
+    ["Open in Terminal", () => onTerminal(dir)],
+    ["Copy Path", () => navigator.clipboard.writeText(path)],
+  ];
+  menu.replaceChildren(
+    ...items.map(([label, run]) => {
+      const li = document.createElement("li");
+      li.textContent = label;
+      li.onclick = run;
+      return li;
+    })
+  );
+  menu.hidden = false;
+  menu.style.left = Math.min(e.clientX, window.innerWidth - menu.offsetWidth - 4) + "px";
+  menu.style.top = Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 4) + "px";
+}
+
+title.oncontextmenu = (e) => root && showMenu(e, root, root);
+
+export function init({ openFile, changed, openTerminal }) {
   onOpen = openFile;
   onChange = changed;
+  onTerminal = openTerminal;
   // Pick up files created or deleted outside the app.
   window.addEventListener("focus", () => root && render());
 }

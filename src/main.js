@@ -321,12 +321,15 @@ function toggleWrap() {
   $("wrap-btn").classList.toggle("on", settings.wrap);
 }
 
-async function toggleTerminal(force) {
-  const panel = $("terminal-panel");
-  const show = force ?? panel.hidden;
-  panel.hidden = !show;
+function showTerminalPanel(show) {
+  $("terminal-panel").hidden = !show;
   $("resizer").hidden = !show;
   $("term-btn").classList.toggle("on", show);
+}
+
+async function toggleTerminal(force) {
+  const show = force ?? $("terminal-panel").hidden;
+  showTerminalPanel(show);
   if (!show) return view.focus();
   if (!terminal.hasTerminals()) await terminal.newTerminal(workingDir());
   else {
@@ -535,6 +538,13 @@ window.addEventListener("beforeunload", saveSession);
 $("wrap-btn").classList.toggle("on", settings.wrap);
 document.documentElement.dataset.theme = settings.theme;
 terminal.setTerminalTheme(settings.theme);
-explorer.init({ openFile: openPath, changed: saveSessionSoon });
+explorer.init({
+  openFile: openPath,
+  changed: saveSessionSoon,
+  openTerminal: (dir) => {
+    showTerminalPanel(true);
+    terminal.newTerminal(dir);
+  },
+});
 toggleSidebar(settings.sidebar);
 restoreSession();
