@@ -4,6 +4,10 @@ A lightweight, Notepad++-style text editor with a built-in terminal. Built with
 [Tauri 2](https://tauri.app) (Rust + the OS webview), CodeMirror 6 and xterm.js.
 The release binary is about 4 MB.
 
+![Lightpad](docs/screenshots/03-overview.png)
+
+See the **[user guide](docs/USER_GUIDE.md)** for a tour of every menu and feature, with screenshots.
+
 ## Features
 
 - File explorer sidebar: open a folder, expand folders, click a file to open it.
