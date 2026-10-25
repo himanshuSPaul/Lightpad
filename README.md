@@ -11,7 +11,8 @@ The release binary is about 4 MB.
 - Syntax highlighting for 140+ languages, picked automatically from the file name.
   Change it from the Language menu or by clicking the language in the status bar.
 - Line numbers, find/replace (Ctrl+F), word wrap, light/dark theme
-- Keeps CRLF/LF line endings as found in the file
+- Keeps CRLF/LF line endings and the file's encoding (UTF-8, UTF-8 BOM, UTF-16, Windows-1252)
+- Saves are crash-safe: written to a temp file, then swapped in
 - Remembers open tabs, including unsaved edits, between runs
 - Terminal panel with real shells (cmd on Windows, your login shell on macOS/Linux),
   multiple terminals, opens in the current file's folder (or the open folder), resizable
@@ -44,11 +45,23 @@ npm run tauri dev     # run with hot reload
 npm run tauri build   # installer in src-tauri/target/release/bundle/
 ```
 
+## Tests and checks
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml   # file encoding and safe-save tests
+npm audit                                         # JS dependency advisories
+cargo audit --file src-tauri/Cargo.lock           # Rust dependency advisories (cargo install cargo-audit)
+```
+
+`.github/workflows/build.yml` runs all of these and builds Windows, macOS and Linux
+installers on every push once the code is on GitHub.
+
 ## Layout
 
 - `src/main.js` – tabs, files, toolbar, shortcuts, session restore
 - `src/explorer.js` – folder tree sidebar
 - `src/terminal.js` – xterm.js terminal panel
 - `src/languages.js` – language list (CodeMirror language-data plus Windows batch files)
-- `src-tauri/src/lib.rs` – file read/write and folder listing commands
+- `src-tauri/src/lib.rs` – app setup and folder listing
+- `src-tauri/src/files.rs` – reading and saving files (encodings, crash-safe saves, size limit)
 - `src-tauri/src/pty.rs` – shell sessions on a real pseudo-terminal (ConPTY on Windows)

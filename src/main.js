@@ -7,7 +7,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { open as openDialog, save as saveDialog, ask } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog, message } from "@tauri-apps/plugin-dialog";
 import { LANGUAGES, detectLanguage, languageByName, loadLanguage } from "./languages.js";
 import * as terminal from "./terminal.js";
 import * as explorer from "./explorer.js";
@@ -86,7 +86,7 @@ const dirName = (p) => p.replace(/[\\/][^\\/]*$/, "");
 const tabState = (t) => (t === current ? view.state : t.state);
 const isDirty = (t) => !tabState(t).doc.eq(t.saved);
 
-function newTab({ path = null, text = "", saved = text, lang = null } = {}) {
+function newTab({ path = null, text = "", saved = text, lang = null, encoding = "UTF-8" } = {}) {
   const tab = {
     id: nextTabId++,
     path,
@@ -95,6 +95,7 @@ function newTab({ path = null, text = "", saved = text, lang = null } = {}) {
     lang: null,
     saved: EditorState.create({ doc: saved }).doc,
     eol: /\r\n/.test(saved) ? "\r\n" : "\n",
+    encoding,
   };
   tabs.push(tab);
   const chosen = lang && languageByName(lang);
@@ -125,18 +126,18 @@ function activate(tab) {
 async function openPath(path) {
   const existing = tabs.find((t) => t.path === path);
   if (existing) return activate(existing);
-  let text;
+  let file;
   try {
-    text = await invoke("read_file", { path });
+    file = await invoke("read_file", { path });
   } catch (e) {
-    return alert(`Could not open ${path}\n${e}`);
+    return showError(`Could not open ${baseName(path)}`, e);
   }
   // Replace a single empty untitled tab, like Notepad++ does.
   if (tabs.length === 1 && current && !current.path && view.state.doc.length === 0) {
     tabs = [];
     current = null;
   }
-  activate(newTab({ path, text }));
+  activate(newTab({ path, text: file.text, encoding: file.encoding }));
   addRecent(path);
 }
 
@@ -167,9 +168,9 @@ async function save(tab = current, forceDialog = false) {
   const state = tabState(tab);
   const text = state.doc.toJSON().join(tab.eol);
   try {
-    await invoke("write_file", { path, contents: text });
+    await invoke("write_file", { path, contents: text, encoding: tab.encoding });
   } catch (e) {
-    alert(`Could not save ${path}\n${e}`);
+    showError(`Could not save ${baseName(path)}`, e);
     return false;
   }
   tab.saved = state.doc;
@@ -185,10 +186,19 @@ async function save(tab = current, forceDialog = false) {
   return true;
 }
 
+function showError(title, err) {
+  message(String(err), { title, kind: "error" }).catch(() => {});
+}
+
 async function closeTab(tab) {
   if (isDirty(tab)) {
-    const keep = await ask(`Save changes to ${tab.name}?`, { title: "Lightpad", kind: "warning", okLabel: "Save", cancelLabel: "Don't save" });
-    if (keep && !(await save(tab))) return;
+    const answer = await message(`Do you want to save the changes to ${tab.name}?`, {
+      title: "Lightpad",
+      kind: "warning",
+      buttons: { yes: "Save", no: "Don't Save", cancel: "Cancel" },
+    });
+    if (answer === "Cancel") return;
+    if ((answer === "Yes" || answer === "Save") && !(await save(tab))) return;
   }
   const i = tabs.indexOf(tab);
   tabs.splice(i, 1);
@@ -237,12 +247,13 @@ async function restoreSession() {
   if (s?.tabs?.length) {
     for (const t of s.tabs) {
       if (t.path) {
-        let saved = null;
+        let file = null;
         try {
-          saved = await invoke("read_file", { path: t.path });
+          file = await invoke("read_file", { path: t.path });
         } catch {}
-        if (saved === null && t.content === null) continue; // file is gone
-        newTab({ path: t.path, text: t.content ?? saved, saved: saved ?? "", lang: t.lang });
+        if (file === null && t.content === null) continue; // file is gone
+        const saved = file?.text ?? "";
+        newTab({ path: t.path, text: t.content ?? saved, saved, lang: t.lang, encoding: file?.encoding });
       } else {
         const tab = newTab({ text: t.content ?? "", saved: "", lang: t.lang });
         tab.name = t.name || tab.name;
@@ -293,6 +304,7 @@ function renderStatus() {
   $("st-pos").textContent = `Ln ${line.number}, Col ${sel.head - line.from + 1}${chosen}`;
   $("st-lang").textContent = current.lang;
   $("st-eol").textContent = current.eol === "\r\n" ? "CRLF" : "LF";
+  $("st-enc").textContent = current.encoding;
   $("st-path").textContent = current.path || "";
 }
 
