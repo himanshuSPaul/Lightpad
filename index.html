@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lightpad</title>
+  </head>
+  <body>
+    <header id="toolbar">
+      <button data-cmd="new" title="New (Ctrl+N)">New</button>
+      <button data-cmd="open" title="Open (Ctrl+O)">Open</button>
+      <div class="dropdown">
+        <button id="recent-btn" title="Recent files">Recent ▾</button>
+        <ul id="recent-list" hidden></ul>
+      </div>
+      <button data-cmd="save" title="Save (Ctrl+S)">Save</button>
+      <button data-cmd="saveAs" title="Save As (Ctrl+Shift+S)">Save As</button>
+      <span class="sep"></span>
+      <button data-cmd="find" title="Find / Replace (Ctrl+F)">Find</button>
+      <button data-cmd="wrap" id="wrap-btn" title="Toggle word wrap (Alt+Z)">Wrap</button>
+      <button data-cmd="theme" title="Toggle light/dark theme">Theme</button>
+      <span class="spacer"></span>
+      <button data-cmd="terminal" id="term-btn" title="Toggle terminal (Ctrl+`)">Terminal</button>
+    </header>
+
+    <nav id="tabs"></nav>
+
+    <main id="workspace">
+      <section id="editor"></section>
+      <div id="resizer" hidden></div>
+      <section id="terminal-panel" hidden>
+        <div id="term-tabs">
+          <span id="term-tab-list"></span>
+          <button id="term-new" title="New terminal">+</button>
+          <span class="spacer"></span>
+          <button id="term-close-panel" title="Hide terminal">×</button>
+        </div>
+        <div id="term-hosts"></div>
+      </section>
+    </main>
+
+    <footer id="status">
+      <span id="st-path"></span>
+      <span class="spacer"></span>
+      <span id="st-pos"></span>
+      <span id="st-lang"></span>
+      <span id="st-eol"></span>
+      <span>UTF-8</span>
+    </footer>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
