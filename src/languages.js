@@ -1,32 +1,55 @@
-import { javascript } from "@codemirror/lang-javascript";
-import { python } from "@codemirror/lang-python";
-import { html } from "@codemirror/lang-html";
-import { css } from "@codemirror/lang-css";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
-import { rust } from "@codemirror/lang-rust";
-import { cpp } from "@codemirror/lang-cpp";
-import { java } from "@codemirror/lang-java";
-import { xml } from "@codemirror/lang-xml";
-import { sql } from "@codemirror/lang-sql";
+import { LanguageDescription, StreamLanguage } from "@codemirror/language";
+import { languages } from "@codemirror/language-data";
 
-const LANGS = [
-  { name: "JavaScript", exts: ["js", "mjs", "cjs", "jsx"], load: () => javascript({ jsx: true }) },
-  { name: "TypeScript", exts: ["ts", "tsx", "mts", "cts"], load: () => javascript({ typescript: true, jsx: true }) },
-  { name: "Python", exts: ["py", "pyw"], load: python },
-  { name: "HTML", exts: ["html", "htm", "vue", "svelte"], load: html },
-  { name: "CSS", exts: ["css", "scss", "less"], load: css },
-  { name: "JSON", exts: ["json", "jsonc"], load: json },
-  { name: "Markdown", exts: ["md", "markdown"], load: markdown },
-  { name: "Rust", exts: ["rs"], load: rust },
-  { name: "C/C++", exts: ["c", "h", "cpp", "cc", "cxx", "hpp", "hh"], load: cpp },
-  { name: "Java", exts: ["java", "kt", "cs"], load: java },
-  { name: "XML", exts: ["xml", "svg", "xaml", "csproj", "plist"], load: xml },
-  { name: "SQL", exts: ["sql"], load: sql },
-];
+// Windows batch files aren't in language-data, so here's a small tokenizer for them.
+const batchKeywords = new Set(
+  ("if else for in do goto call exit set setlocal endlocal echo off on not exist defined errorlevel " +
+    "equ neq lss leq gtr geq shift pause cd chdir pushd popd start title cls copy move del ren mkdir rmdir")
+    .split(" ")
+);
+const batch = StreamLanguage.define({
+  name: "batch",
+  startState: () => ({ lineStart: true }),
+  token(stream, state) {
+    if (stream.sol()) state.lineStart = true;
+    if (stream.eatSpace()) return null;
+    const first = state.lineStart;
+    state.lineStart = false;
+    if (first && stream.match(/^@?(rem\b|::)/i)) {
+      stream.skipToEnd();
+      return "comment";
+    }
+    if (first && stream.match(/^:\w+/)) return "labelName";
+    if (stream.match(/^%~?[\w]+%?|^![\w]+!|^%%\w/)) return "variableName";
+    if (stream.match(/^"[^"]*"?/)) return "string";
+    if (stream.match(/^[0-9]+\b/)) return "number";
+    if (stream.match(/^[&|<>()]+/)) return "operator";
+    if (stream.match(/^@?[\w.-]+/)) {
+      const word = stream.current().replace(/^@/, "").toLowerCase();
+      return batchKeywords.has(word) ? "keyword" : null;
+    }
+    stream.next();
+    return null;
+  },
+});
 
-export function languageFor(path) {
-  const ext = (path || "").split(/[\\/]/).pop().split(".").pop().toLowerCase();
-  const lang = path && LANGS.find((l) => l.exts.includes(ext));
-  return lang ? { name: lang.name, support: lang.load() } : { name: "Plain text", support: [] };
+const PLAIN = LanguageDescription.of({ name: "Plain Text", extensions: ["txt", "log"], support: [] });
+
+export const LANGUAGES = [
+  ...languages,
+  LanguageDescription.of({ name: "Batch File", extensions: ["bat", "cmd"], load: async () => batch }),
+  PLAIN,
+].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+
+export function detectLanguage(path) {
+  const name = (path || "").split(/[\\/]/).pop();
+  return (name && LanguageDescription.matchFilename(LANGUAGES, name)) || PLAIN;
+}
+
+export const languageByName = (name) => LANGUAGES.find((l) => l.name === name) || null;
+
+// Language support is loaded lazily, so only the languages actually used get downloaded.
+export async function loadLanguage(desc) {
+  if (desc === PLAIN) return [];
+  return desc.support || (await desc.load());
 }

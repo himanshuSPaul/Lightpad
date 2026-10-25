@@ -8,8 +8,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open as openDialog, save as saveDialog, ask } from "@tauri-apps/plugin-dialog";
-import { languageFor } from "./languages.js";
+import { LANGUAGES, detectLanguage, languageByName, loadLanguage } from "./languages.js";
 import * as terminal from "./terminal.js";
+import * as explorer from "./explorer.js";
 import "./style.css";
 
 const $ = (id) => document.getElementById(id);
@@ -29,7 +30,11 @@ const store = {
   },
 };
 
-const settings = { theme: store.get("theme", "dark"), wrap: store.get("wrap", false) };
+const settings = {
+  theme: store.get("theme", "dark"),
+  wrap: store.get("wrap", false),
+  sidebar: store.get("sidebar", true),
+};
 const langConf = new Compartment();
 const themeConf = new Compartment();
 const wrapConf = new Compartment();
@@ -43,16 +48,13 @@ let nextTabId = 1;
 
 const view = new EditorView({ parent: $("editor") });
 
-function makeState(text, path) {
-  const lang = languageFor(path);
-  return {
-    lang: lang.name,
-    state: EditorState.create({
+function makeState(text) {
+  return EditorState.create({
       doc: text,
       extensions: [
         basicSetup,
         keymap.of([indentWithTab]),
-        langConf.of(lang.support),
+        langConf.of([]),
         themeConf.of(settings.theme === "dark" ? oneDark : []),
         wrapConf.of(settings.wrap ? EditorView.lineWrapping : []),
         EditorView.updateListener.of((u) => {
@@ -63,8 +65,20 @@ function makeState(text, path) {
           if (u.docChanged || u.selectionSet) renderStatus();
         }),
       ],
-    }),
-  };
+    });
+}
+
+// Sets a tab's syntax highlighting. `manual` marks a choice made from the Language menu.
+async function setLanguage(tab, desc, manual = false) {
+  tab.lang = desc.name;
+  tab.langManual = manual;
+  if (tab === current) renderStatus();
+  const support = await loadLanguage(desc).catch(() => []);
+  if (tab.lang !== desc.name) return; // changed again while loading
+  const effects = langConf.reconfigure(support);
+  if (tab === current) view.dispatch({ effects });
+  else tab.state = tab.state.update({ effects }).state;
+  saveSessionSoon();
 }
 
 const baseName = (p) => p.split(/[\\/]/).pop();
@@ -72,18 +86,19 @@ const dirName = (p) => p.replace(/[\\/][^\\/]*$/, "");
 const tabState = (t) => (t === current ? view.state : t.state);
 const isDirty = (t) => !tabState(t).doc.eq(t.saved);
 
-function newTab({ path = null, text = "", saved = text } = {}) {
-  const { state, lang } = makeState(text, path);
+function newTab({ path = null, text = "", saved = text, lang = null } = {}) {
   const tab = {
     id: nextTabId++,
     path,
     name: path ? baseName(path) : `new ${++untitledCount}`,
-    state,
-    lang,
+    state: makeState(text),
+    lang: null,
     saved: EditorState.create({ doc: saved }).doc,
     eol: /\r\n/.test(saved) ? "\r\n" : "\n",
   };
   tabs.push(tab);
+  const chosen = lang && languageByName(lang);
+  setLanguage(tab, chosen || detectLanguage(path), !!chosen);
   return tab;
 }
 
@@ -100,6 +115,7 @@ function activate(tab) {
   });
   renderTabs();
   renderStatus();
+  explorer.setActive(tab.path);
   view.focus();
   saveSessionSoon();
 }
@@ -130,6 +146,18 @@ async function openFiles() {
   for (const p of [].concat(picked)) await openPath(p);
 }
 
+async function openFolder() {
+  const dir = await openDialog({ directory: true, defaultPath: explorer.getRoot() || undefined });
+  if (!dir) return;
+  await explorer.setRoot(dir);
+  explorer.setActive(current?.path);
+  toggleSidebar(true);
+  saveSessionSoon();
+}
+
+// Where new terminals start: the current file's folder, else the open folder.
+const workingDir = () => (current?.path ? dirName(current.path) : explorer.getRoot());
+
 async function save(tab = current, forceDialog = false) {
   let path = tab.path;
   if (!path || forceDialog) {
@@ -148,10 +176,7 @@ async function save(tab = current, forceDialog = false) {
   if (path !== tab.path) {
     tab.path = path;
     tab.name = baseName(path);
-    const lang = languageFor(path);
-    tab.lang = lang.name;
-    if (tab === current) view.dispatch({ effects: langConf.reconfigure(lang.support) });
-    else tab.state = tab.state.update({ effects: langConf.reconfigure(lang.support) }).state;
+    if (!tab.langManual) setLanguage(tab, detectLanguage(path));
   }
   addRecent(path);
   renderTabs();
@@ -193,17 +218,22 @@ function saveSessionSoon() {
 function saveSession() {
   if (current) current.state = view.state;
   store.set("session", {
+    folder: explorer.getRoot(),
+    expanded: explorer.getExpanded(),
     active: tabs.indexOf(current),
     tabs: tabs.map((t) => ({
       path: t.path,
       name: t.name,
       content: isDirty(t) ? t.state.doc.toString() : null,
+      lang: t.langManual ? t.lang : null,
     })),
   });
 }
 
 async function restoreSession() {
   const s = store.get("session", null);
+  if (s?.folder) await explorer.setRoot(s.folder, s.expanded || []);
+  else explorer.render();
   if (s?.tabs?.length) {
     for (const t of s.tabs) {
       if (t.path) {
@@ -212,9 +242,9 @@ async function restoreSession() {
           saved = await invoke("read_file", { path: t.path });
         } catch {}
         if (saved === null && t.content === null) continue; // file is gone
-        newTab({ path: t.path, text: t.content ?? saved, saved: saved ?? "" });
+        newTab({ path: t.path, text: t.content ?? saved, saved: saved ?? "", lang: t.lang });
       } else {
-        const tab = newTab({ text: t.content ?? "", saved: "" });
+        const tab = newTab({ text: t.content ?? "", saved: "", lang: t.lang });
         tab.name = t.name || tab.name;
       }
     }
@@ -286,16 +316,95 @@ async function toggleTerminal(force) {
   $("resizer").hidden = !show;
   $("term-btn").classList.toggle("on", show);
   if (!show) return view.focus();
-  if (!terminal.hasTerminals()) await terminal.newTerminal(current?.path ? dirName(current.path) : null);
+  if (!terminal.hasTerminals()) await terminal.newTerminal(workingDir());
   else {
     terminal.fitActive();
     terminal.focusTerminal();
   }
 }
 
+function toggleSidebar(force) {
+  settings.sidebar = force ?? !settings.sidebar;
+  store.set("sidebar", settings.sidebar);
+  $("sidebar").hidden = !settings.sidebar;
+  $("side-resizer").hidden = !settings.sidebar;
+  $("explorer-btn").classList.toggle("on", settings.sidebar);
+}
+
+// Language picker: type to filter, Enter or click to apply to the current tab.
+const picker = $("lang-picker");
+const pickerInput = $("lang-filter");
+const pickerList = $("lang-list");
+
+function renderLanguageList() {
+  const q = pickerInput.value.trim().toLowerCase();
+  const matches = LANGUAGES.filter(
+    (l) => !q || l.name.toLowerCase().includes(q) || l.extensions.some((e) => e.toLowerCase() === q.replace(/^\./, ""))
+  );
+  pickerList.replaceChildren(
+    ...matches.map((l, i) => {
+      const li = document.createElement("li");
+      li.textContent = l.name;
+      if (l.extensions.length) {
+        const ext = document.createElement("small");
+        ext.textContent = l.extensions.slice(0, 4).map((e) => "." + e).join(" ");
+        li.append(ext);
+      }
+      if (l.name === current.lang) li.classList.add("current");
+      if (i === 0 && q) li.classList.add("sel");
+      li.onclick = () => chooseLanguage(l);
+      li._lang = l;
+      return li;
+    })
+  );
+  (pickerList.querySelector(".sel") || pickerList.querySelector(".current"))?.scrollIntoView({ block: "nearest" });
+}
+
+function chooseLanguage(l) {
+  picker.hidden = true;
+  setLanguage(current, l, true);
+  view.focus();
+}
+
+function openLanguagePicker() {
+  picker.hidden = false;
+  pickerInput.value = "";
+  renderLanguageList();
+  pickerInput.focus();
+}
+
+pickerInput.oninput = renderLanguageList;
+pickerInput.onkeydown = (e) => {
+  const items = [...pickerList.children];
+  let i = items.findIndex((li) => li.classList.contains("sel"));
+  if (e.key === "Escape") {
+    picker.hidden = true;
+    view.focus();
+  } else if (e.key === "Enter" && items[Math.max(i, 0)]) {
+    chooseLanguage(items[Math.max(i, 0)]._lang);
+  } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    items[i]?.classList.remove("sel");
+    i = Math.max(0, Math.min(items.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)));
+    items[i]?.classList.add("sel");
+    items[i]?.scrollIntoView({ block: "nearest" });
+  }
+};
+picker.onclick = (e) => e.stopPropagation();
+document.addEventListener("click", () => (picker.hidden = true));
+$("st-lang").onclick = (e) => {
+  e.stopPropagation();
+  openLanguagePicker();
+};
+
 const commands = {
+  language: openLanguagePicker,
   new: () => activate(newTab()),
   open: openFiles,
+  openFolder,
+  explorer: () => toggleSidebar(),
+  refreshTree: () => explorer.render(),
+  collapseTree: () => explorer.collapseAll(),
   save: () => save(),
   saveAs: () => save(current, true),
   find: () => openSearchPanel(view),
@@ -310,7 +419,7 @@ const commands = {
 
 document.querySelectorAll("[data-cmd]").forEach((b) => (b.onclick = () => commands[b.dataset.cmd]()));
 
-$("term-new").onclick = () => terminal.newTerminal(current?.path ? dirName(current.path) : null);
+$("term-new").onclick = () => terminal.newTerminal(workingDir());
 $("term-close-panel").onclick = () => toggleTerminal(false);
 
 // Recent files dropdown
@@ -347,6 +456,23 @@ $("resizer").onpointerdown = (e) => {
 };
 $("terminal-panel").style.height = store.get("termHeight", 240) + "px";
 
+// Drag the bar beside the explorer to resize it.
+$("side-resizer").onpointerdown = (e) => {
+  const side = $("sidebar");
+  const startX = e.clientX;
+  const startW = side.offsetWidth;
+  e.target.setPointerCapture(e.pointerId);
+  e.target.onpointermove = (m) => {
+    side.style.width = Math.max(140, Math.min(window.innerWidth - 300, startW + m.clientX - startX)) + "px";
+  };
+  e.target.onpointerup = () => {
+    e.target.onpointermove = null;
+    store.set("sidebarWidth", side.offsetWidth);
+    terminal.fitActive();
+  };
+};
+$("sidebar").style.width = store.get("sidebarWidth", 240) + "px";
+
 // Global shortcuts
 window.addEventListener(
   "keydown",
@@ -355,10 +481,12 @@ window.addEventListener(
     let cmd = null;
     if (ctrl && e.code === "Backquote") cmd = commands.terminal;
     else if (ctrl && !e.shiftKey && e.code === "KeyN") cmd = commands.new;
-    else if (ctrl && !e.shiftKey && e.code === "KeyO") cmd = commands.open;
+    else if (ctrl && e.code === "KeyO") cmd = e.shiftKey ? commands.openFolder : commands.open;
+    else if (ctrl && !e.shiftKey && e.code === "KeyB") cmd = commands.explorer;
     else if (ctrl && e.code === "KeyS") cmd = e.shiftKey ? commands.saveAs : commands.save;
     else if (ctrl && !e.shiftKey && e.code === "KeyW") cmd = () => closeTab(current);
     else if (e.altKey && e.code === "KeyZ") cmd = commands.wrap;
+    else if (ctrl && e.shiftKey && e.code === "KeyL") cmd = commands.language;
     else if (ctrl && e.code === "Tab" && tabs.length > 1) {
       const i = tabs.indexOf(current) + (e.shiftKey ? -1 : 1);
       cmd = () => activate(tabs[(i + tabs.length) % tabs.length]);
@@ -376,7 +504,14 @@ window.addEventListener(
 getCurrentWebview()
   .onDragDropEvent(async (e) => {
     if (e.payload.type !== "drop") return;
-    for (const p of e.payload.paths) if (await invoke("file_exists", { path: p })) await openPath(p);
+    for (const p of e.payload.paths) {
+      if (await invoke("file_exists", { path: p })) await openPath(p);
+      else {
+        await explorer.setRoot(p);
+        toggleSidebar(true);
+        saveSessionSoon();
+      }
+    }
   })
   .catch(() => {});
 
@@ -388,4 +523,6 @@ window.addEventListener("beforeunload", saveSession);
 $("wrap-btn").classList.toggle("on", settings.wrap);
 document.documentElement.dataset.theme = settings.theme;
 terminal.setTerminalTheme(settings.theme);
+explorer.init({ openFile: openPath, changed: saveSessionSoon });
+toggleSidebar(settings.sidebar);
 restoreSession();

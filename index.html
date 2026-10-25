@@ -7,8 +7,11 @@
   </head>
   <body>
     <header id="toolbar">
+      <button data-cmd="explorer" id="explorer-btn" title="Toggle explorer (Ctrl+B)">Explorer</button>
+      <span class="sep"></span>
       <button data-cmd="new" title="New (Ctrl+N)">New</button>
-      <button data-cmd="open" title="Open (Ctrl+O)">Open</button>
+      <button data-cmd="open" title="Open file (Ctrl+O)">Open</button>
+      <button data-cmd="openFolder" title="Open folder (Ctrl+Shift+O)">Open Folder</button>
       <div class="dropdown">
         <button id="recent-btn" title="Recent files">Recent ▾</button>
         <ul id="recent-list" hidden></ul>
@@ -18,14 +21,26 @@
       <span class="sep"></span>
       <button data-cmd="find" title="Find / Replace (Ctrl+F)">Find</button>
       <button data-cmd="wrap" id="wrap-btn" title="Toggle word wrap (Alt+Z)">Wrap</button>
+      <button data-cmd="language" title="Syntax highlighting language (Ctrl+Shift+L)">Language ▾</button>
       <button data-cmd="theme" title="Toggle light/dark theme">Theme</button>
       <span class="spacer"></span>
       <button data-cmd="terminal" id="term-btn" title="Toggle terminal (Ctrl+`)">Terminal</button>
     </header>
 
-    <nav id="tabs"></nav>
-
+    <div id="body-row">
+    <aside id="sidebar">
+      <div id="sidebar-head">
+        <span>Explorer</span>
+        <span class="spacer"></span>
+        <button data-cmd="refreshTree" title="Refresh">⟳</button>
+        <button data-cmd="collapseTree" title="Collapse all">⊟</button>
+      </div>
+      <div id="explorer-title"></div>
+      <div id="tree"></div>
+    </aside>
+    <div id="side-resizer"></div>
     <main id="workspace">
+      <nav id="tabs"></nav>
       <section id="editor"></section>
       <div id="resizer" hidden></div>
       <section id="terminal-panel" hidden>
@@ -38,12 +53,18 @@
         <div id="term-hosts"></div>
       </section>
     </main>
+    </div>
+
+    <div id="lang-picker" hidden>
+      <input id="lang-filter" placeholder="Select language (type to filter, e.g. python or .sql)" spellcheck="false" />
+      <ul id="lang-list"></ul>
+    </div>
 
     <footer id="status">
       <span id="st-path"></span>
       <span class="spacer"></span>
       <span id="st-pos"></span>
-      <span id="st-lang"></span>
+      <span id="st-lang" title="Change language (Ctrl+Shift+L)"></span>
       <span id="st-eol"></span>
       <span>UTF-8</span>
     </footer>
