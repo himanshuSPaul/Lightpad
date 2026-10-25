@@ -1,8 +1,8 @@
 import { basicSetup } from "codemirror";
 import { EditorState, Compartment } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { indentWithTab } from "@codemirror/commands";
-import { openSearchPanel } from "@codemirror/search";
+import { indentWithTab, undo, redo, selectAll, toggleComment } from "@codemirror/commands";
+import { openSearchPanel, gotoLine } from "@codemirror/search";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -11,6 +11,7 @@ import { open as openDialog, save as saveDialog, message } from "@tauri-apps/plu
 import { LANGUAGES, detectLanguage, languageByName, loadLanguage } from "./languages.js";
 import * as terminal from "./terminal.js";
 import * as explorer from "./explorer.js";
+import { createMenubar } from "./menu.js";
 import "./style.css";
 
 const $ = (id) => document.getElementById(id);
@@ -34,7 +35,10 @@ const settings = {
   theme: store.get("theme", "dark"),
   wrap: store.get("wrap", false),
   sidebar: store.get("sidebar", true),
+  editorFont: store.get("editorFont", 14),
+  termFont: store.get("termFont", 13),
 };
+const DEFAULT_FONT = { editor: 14, terminal: 13 };
 const langConf = new Compartment();
 const themeConf = new Compartment();
 const wrapConf = new Compartment();
@@ -318,13 +322,49 @@ function toggleWrap() {
   settings.wrap = !settings.wrap;
   store.set("wrap", settings.wrap);
   view.dispatch({ effects: wrapConf.reconfigure(settings.wrap ? EditorView.lineWrapping : []) });
-  $("wrap-btn").classList.toggle("on", settings.wrap);
+}
+
+// ---------- Zoom (editor and terminal are zoomed separately) ----------
+
+let lastPane = "editor";
+$("editor").addEventListener("focusin", () => (lastPane = "editor"));
+$("terminal-panel").addEventListener("focusin", () => (lastPane = "terminal"));
+
+function applyZoom() {
+  document.documentElement.style.setProperty("--editor-font-size", settings.editorFont + "px");
+  view.requestMeasure();
+  terminal.setTerminalFontSize(settings.termFont);
+  const pct = (px, def) => Math.round((px / def) * 100) + "%";
+  const ed = settings.editorFont !== DEFAULT_FONT.editor ? `Editor ${pct(settings.editorFont, DEFAULT_FONT.editor)}` : "";
+  const te = settings.termFont !== DEFAULT_FONT.terminal ? `Terminal ${pct(settings.termFont, DEFAULT_FONT.terminal)}` : "";
+  $("st-zoom").textContent = [ed, te].filter(Boolean).join(" · ");
+}
+
+// step: +1 / -1 to zoom, 0 to restore the default size.
+function zoom(pane, step) {
+  const key = pane === "terminal" ? "termFont" : "editorFont";
+  settings[key] = step === 0 ? DEFAULT_FONT[pane] : Math.max(8, Math.min(40, settings[key] + step));
+  store.set(key, settings[key]);
+  applyZoom();
+}
+
+// Ctrl+mouse wheel zooms the pane under the mouse.
+for (const [id, pane] of [["editor", "editor"], ["term-hosts", "terminal"]]) {
+  $(id).addEventListener(
+    "wheel",
+    (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      zoom(pane, e.deltaY < 0 ? 1 : -1);
+    },
+    { passive: false, capture: true }
+  );
 }
 
 function showTerminalPanel(show) {
   $("terminal-panel").hidden = !show;
   $("resizer").hidden = !show;
-  $("term-btn").classList.toggle("on", show);
 }
 
 async function toggleTerminal(force) {
@@ -343,7 +383,6 @@ function toggleSidebar(force) {
   store.set("sidebar", settings.sidebar);
   $("sidebar").hidden = !settings.sidebar;
   $("side-resizer").hidden = !settings.sidebar;
-  $("explorer-btn").classList.toggle("on", settings.sidebar);
 }
 
 // Language picker: type to filter, Enter or click to apply to the current tab.
@@ -434,25 +473,145 @@ const commands = {
 
 document.querySelectorAll("[data-cmd]").forEach((b) => (b.onclick = () => commands[b.dataset.cmd]()));
 
-$("term-new").onclick = () => terminal.newTerminal(workingDir());
+function newTerminalHere() {
+  showTerminalPanel(true);
+  terminal.newTerminal(workingDir());
+}
+$("term-new").onclick = newTerminalHere;
 $("term-close-panel").onclick = () => toggleTerminal(false);
 
-// Recent files dropdown
-const recentList = $("recent-list");
-$("recent-btn").onclick = (e) => {
-  e.stopPropagation();
-  const list = store.get("recent", []);
-  recentList.replaceChildren(
-    ...(list.length ? list : [null]).map((p) => {
-      const li = document.createElement("li");
-      li.textContent = p || "(no recent files)";
-      if (p) li.onclick = () => openPath(p);
-      return li;
-    })
-  );
-  recentList.hidden = !recentList.hidden;
+// ---------- Menu bar ----------
+
+const editorCmd = (fn) => () => {
+  view.focus();
+  fn(view);
 };
-document.addEventListener("click", () => (recentList.hidden = true));
+
+async function saveAll() {
+  for (const t of [...tabs]) if (isDirty(t) && !(await save(t))) return;
+}
+
+async function closeAll() {
+  for (const t of [...tabs]) {
+    const before = tabs.length;
+    await closeTab(t);
+    if (tabs.length === before) return; // cancelled
+  }
+}
+
+function openReplace() {
+  openSearchPanel(view);
+  requestAnimationFrame(() => document.querySelector(".cm-search input[name=replace]")?.focus());
+}
+
+async function paste() {
+  try {
+    const text = await navigator.clipboard.readText();
+    view.focus();
+    view.dispatch(view.state.replaceSelection(text));
+  } catch {
+    showError("Paste", "Use Ctrl+V to paste.");
+  }
+}
+
+function copy(cut) {
+  const ranges = view.state.selection.ranges.filter((r) => !r.empty);
+  if (!ranges.length) return view.focus();
+  navigator.clipboard.writeText(ranges.map((r) => view.state.sliceDoc(r.from, r.to)).join("\n")).catch(() => {});
+  if (cut) view.dispatch(view.state.replaceSelection(""));
+  view.focus();
+}
+
+const MENU_LANGUAGES = [
+  "Plain Text", "Batch File", "C", "C#", "C++", "CSS", "Go", "HTML", "Java", "JavaScript", "JSON", "Markdown",
+  "PHP", "PowerShell", "Python", "Ruby", "Rust", "Shell", "SQL", "TypeScript", "XML", "YAML",
+];
+
+createMenubar([
+  {
+    label: "File",
+    items: () => {
+      const recent = store.get("recent", []);
+      return [
+        { label: "New", shortcut: "Ctrl+N", run: commands.new },
+        { label: "Open File...", shortcut: "Ctrl+O", run: commands.open },
+        { label: "Open Folder...", shortcut: "Ctrl+Shift+O", run: commands.openFolder },
+        {
+          label: "Open Recent",
+          submenu: () =>
+            recent.length
+              ? [...recent.map((p) => ({ label: p, run: () => openPath(p) })), "-", { label: "Clear Recent Files", run: () => store.set("recent", []) }]
+              : [{ label: "No recent files", disabled: true }],
+        },
+        "-",
+        { label: "Save", shortcut: "Ctrl+S", run: commands.save },
+        { label: "Save As...", shortcut: "Ctrl+Shift+S", run: commands.saveAs },
+        { label: "Save All", shortcut: "Ctrl+Alt+S", run: saveAll },
+        "-",
+        { label: "Close Tab", shortcut: "Ctrl+W", run: () => closeTab(current) },
+        { label: "Close All", run: closeAll },
+        "-",
+        { label: "Exit", shortcut: "Alt+F4", run: () => getCurrentWindow().close() },
+      ];
+    },
+  },
+  {
+    label: "Edit",
+    items: () => [
+      { label: "Undo", shortcut: "Ctrl+Z", run: editorCmd(undo) },
+      { label: "Redo", shortcut: "Ctrl+Y", run: editorCmd(redo) },
+      "-",
+      { label: "Cut", shortcut: "Ctrl+X", run: () => copy(true) },
+      { label: "Copy", shortcut: "Ctrl+C", run: () => copy(false) },
+      { label: "Paste", shortcut: "Ctrl+V", run: paste },
+      { label: "Select All", shortcut: "Ctrl+A", run: editorCmd(selectAll) },
+      "-",
+      { label: "Find...", shortcut: "Ctrl+F", run: commands.find },
+      { label: "Replace...", shortcut: "Ctrl+H", run: openReplace },
+      { label: "Go to Line...", shortcut: "Ctrl+G", run: editorCmd(gotoLine) },
+      "-",
+      { label: "Toggle Comment", shortcut: "Ctrl+/", run: editorCmd(toggleComment) },
+    ],
+  },
+  {
+    label: "View",
+    items: () => [
+      { label: "Explorer", shortcut: "Ctrl+B", checked: settings.sidebar, run: commands.explorer },
+      { label: "Terminal", shortcut: "Ctrl+`", checked: !$("terminal-panel").hidden, run: commands.terminal },
+      "-",
+      { label: "Word Wrap", shortcut: "Alt+Z", checked: settings.wrap, run: commands.wrap },
+      { label: "Dark Theme", checked: settings.theme === "dark", run: commands.theme },
+      "-",
+      { label: "Zoom In (Ctrl+Mouse Wheel Up)", shortcut: "Ctrl+=", run: () => zoom("editor", 1) },
+      { label: "Zoom Out (Ctrl+Mouse Wheel Down)", shortcut: "Ctrl+-", run: () => zoom("editor", -1) },
+      { label: "Restore Default Zoom", shortcut: "Ctrl+0", run: () => zoom("editor", 0) },
+    ],
+  },
+  {
+    label: "Language",
+    items: () => [
+      ...MENU_LANGUAGES.map((name) => ({
+        label: name,
+        checked: current?.lang === name,
+        run: () => chooseLanguage(languageByName(name)),
+      })),
+      "-",
+      { label: "All Languages...", shortcut: "Ctrl+Shift+L", run: commands.language },
+    ],
+  },
+  {
+    label: "Terminal",
+    items: () => [
+      { label: "New Terminal", shortcut: "Ctrl+Shift+`", run: newTerminalHere },
+      { label: "Show / Hide Terminal", shortcut: "Ctrl+`", run: commands.terminal },
+      { label: "Close Terminal", run: () => terminal.closeActiveTerminal() },
+      "-",
+      { label: "Zoom In (Ctrl+Mouse Wheel Up)", shortcut: "Ctrl+=", run: () => zoom("terminal", 1) },
+      { label: "Zoom Out (Ctrl+Mouse Wheel Down)", shortcut: "Ctrl+-", run: () => zoom("terminal", -1) },
+      { label: "Restore Default Zoom", shortcut: "Ctrl+0", run: () => zoom("terminal", 0) },
+    ],
+  },
+]);
 
 // Drag the bar between editor and terminal to resize.
 $("resizer").onpointerdown = (e) => {
@@ -494,7 +653,13 @@ window.addEventListener(
   (e) => {
     const ctrl = e.ctrlKey || e.metaKey;
     let cmd = null;
-    if (ctrl && e.code === "Backquote") cmd = commands.terminal;
+    if (ctrl && e.code === "Backquote") cmd = e.shiftKey ? newTerminalHere : commands.terminal;
+    else if (ctrl && !e.altKey && ["Equal", "NumpadAdd"].includes(e.code)) cmd = () => zoom(lastPane, 1);
+    else if (ctrl && !e.altKey && ["Minus", "NumpadSubtract"].includes(e.code)) cmd = () => zoom(lastPane, -1);
+    else if (ctrl && !e.altKey && ["Digit0", "Numpad0", "NumpadDivide"].includes(e.code)) cmd = () => zoom(lastPane, 0);
+    else if (ctrl && e.altKey && e.code === "KeyS") cmd = saveAll;
+    else if (ctrl && !e.shiftKey && e.code === "KeyH" && lastPane === "editor") cmd = openReplace;
+    else if (ctrl && !e.shiftKey && e.code === "KeyG" && lastPane === "editor") cmd = editorCmd(gotoLine);
     else if (ctrl && !e.shiftKey && e.code === "KeyN") cmd = commands.new;
     else if (ctrl && e.code === "KeyO") cmd = e.shiftKey ? commands.openFolder : commands.open;
     else if (ctrl && !e.shiftKey && e.code === "KeyB") cmd = commands.explorer;
@@ -535,7 +700,7 @@ getCurrentWindow()
   .catch(() => {});
 window.addEventListener("beforeunload", saveSession);
 
-$("wrap-btn").classList.toggle("on", settings.wrap);
+applyZoom();
 document.documentElement.dataset.theme = settings.theme;
 terminal.setTerminalTheme(settings.theme);
 explorer.init({

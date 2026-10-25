@@ -30,7 +30,11 @@ The release binary is about 4 MB.
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
 | Ctrl+F | Find and replace |
 | Alt+Z | Toggle word wrap |
-| Ctrl+` | Show / hide terminal |
+| Ctrl+` / Ctrl+Shift+` | Show / hide terminal, new terminal |
+| Ctrl+= / Ctrl+- / Ctrl+0, Ctrl+mouse wheel | Zoom in / out / reset the editor or terminal (whichever has focus, or is under the mouse) |
+| Ctrl+H / Ctrl+G / Ctrl+/ | Replace, go to line, toggle comment |
+| Ctrl+Alt+S | Save all |
+| Alt+F, Alt+E, Alt+V, Alt+L, Alt+T | Open the File, Edit, View, Language, Terminal menus |
 | Ctrl+Shift+C / V | Copy / paste in terminal |
 
 ## Build and run

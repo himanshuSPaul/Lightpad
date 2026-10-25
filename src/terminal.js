@@ -12,6 +12,7 @@ const THEMES = {
 const sessions = new Map(); // pty id -> { term, fit, host, tab }
 let active = null;
 let theme = "dark";
+let fontSize = 13;
 const tabList = document.getElementById("term-tab-list");
 const hosts = document.getElementById("term-hosts");
 
@@ -34,7 +35,7 @@ export function fitActive() {
 export async function newTerminal(cwd) {
   const term = new Terminal({
     fontFamily: 'Consolas, "Cascadia Mono", Menlo, "DejaVu Sans Mono", monospace',
-    fontSize: 13,
+    fontSize,
     cursorBlink: true,
     scrollback: 5000,
     theme: THEMES[theme],
@@ -115,6 +116,12 @@ export function hasTerminals() {
 
 export function focusTerminal() {
   sessions.get(active)?.term.focus();
+}
+
+export function setTerminalFontSize(px) {
+  fontSize = px;
+  for (const s of sessions.values()) s.term.options.fontSize = px;
+  fitActive();
 }
 
 export function setTerminalTheme(name) {

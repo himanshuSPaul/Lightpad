@@ -43,38 +43,6 @@ button.on { border-color: var(--accent); color: var(--accent); }
 .spacer { flex: 1; }
 .sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
 
-#toolbar {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 6px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-}
-.dropdown { position: relative; }
-#recent-list {
-  position: absolute;
-  z-index: 10;
-  top: 100%;
-  left: 0;
-  margin: 2px 0 0;
-  padding: 4px 0;
-  list-style: none;
-  min-width: 320px;
-  max-width: 600px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-}
-#recent-list li {
-  padding: 5px 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-#recent-list li:hover { background: var(--hover); }
 
 #tabs {
   display: flex;
@@ -101,7 +69,7 @@ button.on { border-color: var(--accent); color: var(--accent); }
 
 #workspace { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 #editor { flex: 1; min-height: 0; }
-#editor .cm-editor { height: 100%; font-size: 14px; }
+#editor .cm-editor { height: 100%; font-size: var(--editor-font-size, 14px); }
 #editor .cm-scroller { font-family: Consolas, "Cascadia Mono", Menlo, "DejaVu Sans Mono", monospace; }
 #editor .cm-editor.cm-focused { outline: none; }
 
@@ -246,3 +214,49 @@ button.on { border-color: var(--accent); color: var(--accent); }
 #ctx-menu[hidden] { display: none; }
 #ctx-menu li { padding: 5px 14px; cursor: pointer; }
 #ctx-menu li:hover { background: var(--hover); }
+
+#menubar {
+  display: flex;
+  align-items: center;
+  padding: 2px 4px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.menu { position: relative; }
+.menu-title { padding: 3px 9px; border-radius: 4px; }
+.menu-title u { text-decoration: none; }
+body.alt-held .menu-title u { text-decoration: underline; }
+.menu-title.open { background: var(--hover); }
+.menu-pop {
+  position: absolute;
+  z-index: 40;
+  top: 100%;
+  left: 0;
+  margin: 2px 0 0;
+  padding: 4px 0;
+  list-style: none;
+  min-width: 240px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+.menu-pop.sub { top: -5px; left: 100%; margin: 0 0 0 2px; max-width: 560px; }
+.menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px 5px 6px;
+  white-space: nowrap;
+  cursor: default;
+  outline: none;
+}
+.menu-item:hover, .menu-item:focus { background: var(--hover); }
+.menu-item.disabled { color: var(--muted); }
+.menu-check { width: 16px; text-align: center; color: var(--accent); }
+.menu-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.menu-key { color: var(--muted); padding-left: 24px; font-size: 12px; }
+.menu-sep { height: 1px; margin: 4px 0; background: var(--border); }
+#st-zoom:empty { display: none; }
