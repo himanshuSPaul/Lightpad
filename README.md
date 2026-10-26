@@ -8,6 +8,17 @@ The release binary is about 4 MB.
 
 See the **[user guide](docs/USER_GUIDE.md)** for a tour of every menu and feature, with screenshots.
 
+## Download
+
+Get the latest installer from the [Releases page](https://github.com/himanshuSPaul/Lightpad/releases/latest):
+
+- `Lightpad_x.y.z_x64-setup.exe` or `Lightpad_x.y.z_x64_en-US.msi`: Windows installer
+- `Lightpad-portable-windows-x64.zip`: Windows, no install, just unzip and run `lightpad.exe`
+- `.dmg` for macOS, `.AppImage` or `.deb` for Linux
+
+To make a new release, bump `version` in `src-tauri/tauri.conf.json`, then push a tag:
+`git tag v0.1.1 && git push origin v0.1.1`. The build attaches the installers to the release.
+
 ## Features
 
 - File explorer sidebar: open a folder, expand folders, click a file to open it.
