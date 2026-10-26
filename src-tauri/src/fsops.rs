@@ -22,6 +22,23 @@ fn ensure_free(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// True when both paths name the same file on disk, e.g. "a.txt" and "A.txt" on Windows.
+fn same_file(a: &Path, b: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (fs::symlink_metadata(a), fs::symlink_metadata(b)) {
+            (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+            _ => false,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        // Windows file systems ignore letter case, so a case-only rename names the same file.
+        a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
+    }
+}
+
 fn to_string(p: PathBuf) -> String {
     p.to_string_lossy().into_owned()
 }
@@ -49,9 +66,9 @@ pub fn rename_path(path: String, new_name: String) -> Result<String, String> {
     if to == from {
         return Ok(path);
     }
-    // Allow changing only the letter case on case-insensitive file systems.
-    let case_only = to.to_string_lossy().to_lowercase() == from.to_string_lossy().to_lowercase();
-    if !case_only {
+    // Allow changing only the letter case on case-insensitive file systems, where the new name
+    // already "exists" because it is the same file.
+    if !(to.exists() && same_file(&from, &to)) {
         ensure_free(&to)?;
     }
     fs::rename(&from, &to).map_err(|e| e.to_string())?;
@@ -85,6 +102,18 @@ fn free_copy_name(dir: &Path, src: &Path) -> PathBuf {
 }
 
 fn copy_recursive(from: &Path, to: &Path) -> std::io::Result<()> {
+    // Copy links as links. Following them could loop forever on a link to a parent folder.
+    if fs::symlink_metadata(from)?.file_type().is_symlink() {
+        let target = fs::read_link(from)?;
+        #[cfg(unix)]
+        return std::os::unix::fs::symlink(&target, to);
+        #[cfg(windows)]
+        return if from.is_dir() {
+            std::os::windows::fs::symlink_dir(&target, to)
+        } else {
+            std::os::windows::fs::symlink_file(&target, to)
+        };
+    }
     if from.is_dir() {
         fs::create_dir(to)?;
         for entry in fs::read_dir(from)? {
@@ -171,6 +200,37 @@ mod tests {
         let moved = paste_path(s(&f), sub.clone(), true).unwrap();
         assert!(!f.exists() && Path::new(&moved).exists());
         assert_eq!(fs::read_to_string(&moved).unwrap(), "hi");
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn case_only_rename_never_overwrites_another_file() {
+        let d = temp_dir("case");
+        let lower = d.join("a.txt");
+        fs::write(&lower, "lower").unwrap();
+        let upper = d.join("A.txt");
+        if upper.exists() {
+            // Case-insensitive file system: "A.txt" is the same file, so the rename is allowed.
+            assert!(rename_path(s(&lower), "A.txt".into()).is_ok());
+        } else {
+            fs::write(&upper, "UPPER").unwrap();
+            assert!(rename_path(s(&lower), "A.txt".into()).is_err());
+            assert_eq!(fs::read_to_string(&upper).unwrap(), "UPPER");
+        }
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copies_links_without_following_them() {
+        let d = temp_dir("links");
+        let proj = d.join("proj");
+        fs::create_dir(&proj).unwrap();
+        fs::write(proj.join("a.txt"), "a").unwrap();
+        std::os::unix::fs::symlink(&proj, proj.join("self")).unwrap();
+        let copy = paste_path(s(&proj), s(&d), false).unwrap();
+        assert!(fs::symlink_metadata(Path::new(&copy).join("self")).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_to_string(Path::new(&copy).join("a.txt")).unwrap(), "a");
         fs::remove_dir_all(&d).unwrap();
     }
 

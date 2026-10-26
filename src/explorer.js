@@ -11,6 +11,7 @@ let onChange = () => {};
 let actions = {}; // hooks into the editor: tabs, saving, terminal (see init)
 let selected = null; // the highlighted row, target of F2 / Del / Ctrl+C / X / V
 let clipboard = null; // { path, cut }
+let changes = 0; // counts folder expands/collapses, so a slow refresh doesn't undo one made meanwhile
 
 const signature = (container) =>
   [...container.querySelectorAll(".node")].map((n) => n.dataset.path + n.querySelector(".chevron")?.className).join("|");
@@ -99,6 +100,7 @@ async function renderDir(path, depth, container) {
 }
 
 async function toggle(path, el, kids, depth) {
+  changes++;
   const chevron = el.querySelector(".chevron");
   if (expanded.has(path)) {
     expanded.delete(path);
@@ -127,7 +129,9 @@ export async function render() {
   title.title = root;
   const scroll = tree.scrollTop;
   const fresh = document.createElement("div");
+  const before = changes;
   await renderDir(root, 0, fresh);
+  if (changes !== before) return render(); // a folder was opened or closed while listing: list again
   // Leave the tree alone if nothing changed, so a click that is in progress isn't lost.
   if (tree.querySelector(".node") && signature(fresh) === signature(tree)) return;
   tree.replaceChildren(...fresh.childNodes);
@@ -140,8 +144,11 @@ function select(path) {
 }
 
 function relativePath(path) {
-  if (!root || !path.startsWith(root)) return path;
-  return path.slice(root.length).replace(/^[\\/]+/, "") || ".";
+  if (!root) return path;
+  if (path === root) return ".";
+  const r = root.replace(/[\\/]+$/, "");
+  if (!path.startsWith(r + "/") && !path.startsWith(r + "\\")) return path;
+  return path.slice(r.length + 1);
 }
 
 // ---------- Small text prompt (rename, new file, new folder) ----------
@@ -215,7 +222,8 @@ async function rename(path) {
 
 async function remove(path, isDir) {
   if (!(await actions.confirm(`Move "${baseName(path)}"${isDir ? " and everything in it" : ""} to the Recycle Bin?`, "Delete"))) return;
-  if ((await run(() => invoke("delete_path", { path }))) === null) return;
+  // delete_path returns nothing, so map success to true; run() gives null on failure.
+  if (!(await run(async () => (await invoke("delete_path", { path }), true)))) return;
   if (clipboard?.path === path) clipboard = null;
   actions.deleted(path);
   await render();

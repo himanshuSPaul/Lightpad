@@ -35,7 +35,10 @@ const store = {
   set: (k, v) => {
     try {
       localStorage.setItem("lightpad." + k, JSON.stringify(v));
-    } catch {}
+      return true;
+    } catch {
+      return false; // storage full
+    }
   },
 };
 
@@ -121,7 +124,7 @@ const dirName = (p) => p.replace(/[\\/][^\\/]*$/, "");
 const tabState = (t) => (t === current ? view.state : t.state);
 const isDirty = (t) => !tabState(t).doc.eq(t.saved);
 
-function newTab({ path = null, text = "", saved = text, lang = null, encoding = "UTF-8" } = {}) {
+function newTab({ path = null, text = "", saved = text, lang = null, encoding = "UTF-8", mtime = null } = {}) {
   const tab = {
     id: nextTabId++,
     path,
@@ -131,6 +134,7 @@ function newTab({ path = null, text = "", saved = text, lang = null, encoding = 
     saved: EditorState.create({ doc: saved }).doc,
     eol: /\r\n/.test(saved) ? "\r\n" : "\n",
     encoding,
+    mtime, // the file's modified time when last read or saved, to notice changes by other programs
   };
   tabs.push(tab);
   const chosen = lang && languageByName(lang);
@@ -172,7 +176,7 @@ async function openPath(path) {
     tabs = [];
     current = null;
   }
-  activate(newTab({ path, text: file.text, encoding: file.encoding }));
+  activate(newTab({ path, text: file.text, encoding: file.encoding, mtime: file.modified }));
   addRecent(path);
 }
 
@@ -194,16 +198,32 @@ async function openFolder() {
 // Where new terminals start: the current file's folder, else the open folder.
 const workingDir = () => (current?.path ? dirName(current.path) : explorer.getRoot());
 
+let saving = 0; // while a save is running, its dialogs mustn't trigger the disk-change check
+
 async function save(tab = current, forceDialog = false) {
+  saving++;
+  try {
+    return await saveTab(tab, forceDialog);
+  } finally {
+    saving--;
+  }
+}
+
+async function saveTab(tab, forceDialog) {
   let path = tab.path;
   if (!path || forceDialog) {
     path = await saveDialog({ defaultPath: tab.path || tab.name + ".txt" });
     if (!path) return false;
   }
+  if (path === tab.path && tab.mtime) {
+    const onDisk = await invoke("file_modified", { path }).catch(() => null);
+    if (onDisk && onDisk !== tab.mtime && !(await ask(
+      `${tab.name} was changed by another program since you opened it.\n\nReplace it with your version?`, "Replace"))) return false;
+  }
   const state = tabState(tab);
   const text = state.doc.toJSON().join(tab.eol);
   try {
-    await invoke("write_file", { path, contents: text, encoding: tab.encoding });
+    tab.mtime = await invoke("write_file", { path, contents: text, encoding: tab.encoding });
   } catch (e) {
     showError(`Could not save ${baseName(path)}`, e);
     return false;
@@ -220,6 +240,48 @@ async function save(tab = current, forceDialog = false) {
   saveSessionSoon();
   return true;
 }
+
+const ask = async (text, okLabel) =>
+  (await message(text, { title: "Lightpad", kind: "warning", buttons: { ok: okLabel, cancel: "Cancel" } })) !== "Cancel";
+
+// Picks up changes other programs made to open files: reloads files without unsaved edits, and
+// asks before replacing unsaved edits.
+let checkingDisk = false;
+async function checkDiskChanges() {
+  if (checkingDisk || saving) return;
+  checkingDisk = true;
+  try {
+    for (const tab of [...tabs]) {
+      if (!tab.path || !tab.mtime || !tabs.includes(tab)) continue;
+      const onDisk = await invoke("file_modified", { path: tab.path }).catch(() => null);
+      if (!onDisk || onDisk === tab.mtime) continue; // unchanged, or deleted (keep the tab so nothing is lost)
+      if (isDirty(tab) && !(await ask(`${tab.name} was changed by another program.\n\nReload it and lose your unsaved changes?`, "Reload"))) {
+        tab.mtime = onDisk; // keep the user's version; don't ask again for this change
+        continue;
+      }
+      let file;
+      try {
+        file = await invoke("read_file", { path: tab.path });
+      } catch {
+        continue;
+      }
+      const state = tabState(tab);
+      const update = { changes: { from: 0, to: state.doc.length, insert: file.text },
+        selection: { anchor: Math.min(state.selection.main.head, file.text.length) } };
+      if (tab === current) view.dispatch(update);
+      else tab.state = tab.state.update(update).state;
+      tab.saved = tabState(tab).doc;
+      tab.mtime = file.modified;
+      tab.encoding = file.encoding;
+      tab.eol = /\r\n/.test(file.text) ? "\r\n" : "\n";
+    }
+  } finally {
+    checkingDisk = false;
+  }
+  renderTabs();
+  renderStatus();
+}
+window.addEventListener("focus", checkDiskChanges);
 
 function showError(title, err) {
   message(String(err), { title, kind: "error" }).catch(() => {});
@@ -262,7 +324,7 @@ function saveSessionSoon() {
 
 function saveSession() {
   if (current) current.state = view.state;
-  store.set("session", {
+  const session = {
     folder: explorer.getRoot(),
     expanded: explorer.getExpanded(),
     active: tabs.indexOf(current),
@@ -273,7 +335,11 @@ function saveSession() {
       lang: t.langManual ? t.lang : null,
       pinned: !!t.pinned,
     })),
-  });
+  };
+  if (store.set("session", session)) return;
+  // Too big for storage: keep the tabs, but drop the largest unsaved texts.
+  for (const t of session.tabs) if (t.content?.length > 1_000_000) t.content = null;
+  store.set("session", session);
 }
 
 async function restoreSession() {
@@ -289,7 +355,7 @@ async function restoreSession() {
         } catch {}
         if (file === null && t.content === null) continue; // file is gone
         const saved = file?.text ?? "";
-        newTab({ path: t.path, text: t.content ?? saved, saved, lang: t.lang, encoding: file?.encoding }).pinned = !!t.pinned;
+        newTab({ path: t.path, text: t.content ?? saved, saved, lang: t.lang, encoding: file?.encoding, mtime: file?.modified }).pinned = !!t.pinned;
       } else {
         const tab = newTab({ text: t.content ?? "", saved: "", lang: t.lang });
         tab.pinned = !!t.pinned;
@@ -508,9 +574,11 @@ const pickerList = $("lang-list");
 
 function renderLanguageList() {
   const q = pickerInput.value.trim().toLowerCase();
-  const matches = LANGUAGES.filter(
-    (l) => !q || l.name.toLowerCase().includes(q) || l.extensions.some((e) => e.toLowerCase() === q.replace(/^\./, ""))
-  );
+  const ext = q.replace(/^\./, "");
+  // Best matches first: the file extension typed exactly, then names that start with the text.
+  const rank = (l) =>
+    l.extensions.some((e) => e.toLowerCase() === ext) ? 0 : l.name.toLowerCase().startsWith(q) ? 1 : l.name.toLowerCase().includes(q) ? 2 : 3;
+  const matches = LANGUAGES.filter((l) => !q || rank(l) < 3).sort((a, b) => (q ? rank(a) - rank(b) : 0));
   pickerList.replaceChildren(
     ...matches.map((l, i) => {
       const li = document.createElement("li");
@@ -805,6 +873,9 @@ window.addEventListener(
   "keydown",
   (e) => {
     const ctrl = e.ctrlKey || e.metaKey;
+    // In the terminal, leave the shell its own Ctrl+letter keys (Ctrl+W deletes a word, Ctrl+B moves back, ...).
+    const inTerminal = $("terminal-panel").contains(e.target);
+    if (inTerminal && ctrl && !e.shiftKey && !e.altKey && ["KeyB", "KeyN", "KeyO", "KeyW"].includes(e.code)) return;
     let cmd = null;
     if (ctrl && e.code === "Backquote") cmd = e.shiftKey ? newTerminalHere : commands.terminal;
     else if (ctrl && !e.altKey && ["Equal", "NumpadAdd"].includes(e.code)) cmd = () => zoom(lastPane, 1);
@@ -874,8 +945,7 @@ explorer.init({
   },
   openFolder,
   showError,
-  confirm: async (text, okLabel) =>
-    (await message(text, { title: "Lightpad", kind: "warning", buttons: { ok: okLabel, cancel: "Cancel" } })) !== "Cancel",
+  confirm: ask,
   tabFor: (path) => tabs.find((t) => t.path === path),
   save: (tab) => save(tab),
   saveAs: (tab) => save(tab, true),

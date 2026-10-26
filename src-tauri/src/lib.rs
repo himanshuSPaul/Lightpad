@@ -46,6 +46,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             files::read_file,
             files::write_file,
+            files::file_modified,
             file_exists,
             list_dir,
             fsops::create_file,

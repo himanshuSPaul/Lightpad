@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
@@ -12,7 +12,8 @@ use tauri::{AppHandle, Emitter, State};
 
 struct Session {
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    // Separate lock, so a shell that stops reading input can't freeze the other terminals.
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
     child: Box<dyn Child + Send + Sync>,
 }
 
@@ -76,7 +77,7 @@ pub fn pty_spawn(
         .sessions
         .lock()
         .unwrap()
-        .insert(id, Session { master: pair.master, writer, child });
+        .insert(id, Session { master: pair.master, writer: Arc::new(Mutex::new(writer)), child });
 
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
@@ -106,10 +107,10 @@ pub fn pty_spawn(
 
 #[tauri::command]
 pub fn pty_write(state: State<'_, PtyState>, id: u32, data: String) -> Result<(), String> {
-    let mut sessions = state.sessions.lock().unwrap();
-    let s = sessions.get_mut(&id).ok_or("no such terminal")?;
-    s.writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
-    s.writer.flush().map_err(|e| e.to_string())
+    let writer = state.sessions.lock().unwrap().get(&id).ok_or("no such terminal")?.writer.clone();
+    let mut writer = writer.lock().unwrap();
+    writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+    writer.flush().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -125,6 +126,10 @@ pub fn pty_resize(state: State<'_, PtyState>, id: u32, cols: u16, rows: u16) -> 
 pub fn pty_kill(state: State<'_, PtyState>, id: u32) -> Result<(), String> {
     if let Some(mut s) = state.sessions.lock().unwrap().remove(&id) {
         let _ = s.child.kill();
+        // Collect the exit status so the process doesn't linger as a zombie.
+        std::thread::spawn(move || {
+            let _ = s.child.wait();
+        });
     }
     Ok(())
 }

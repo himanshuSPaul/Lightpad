@@ -1,6 +1,6 @@
 [package]
 name = "lightpad"
-version = "0.1.0"
+version = "0.1.1"
 description = "A lightweight text editor with a built-in terminal"
 edition = "2021"
 
