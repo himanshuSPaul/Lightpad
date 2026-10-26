@@ -17,7 +17,7 @@ Get the latest installer from the [Releases page](https://github.com/himanshuSPa
 - `.dmg` for macOS, `.AppImage` or `.deb` for Linux
 
 To make a new release, bump `version` in `src-tauri/tauri.conf.json`, then push a tag:
-`git tag v0.1.1 && git push origin v0.1.1`. The build attaches the installers to the release.
+`git tag v0.1.1 && git push origin v0.1.1` (or run the Build workflow from the Actions tab with a release tag). The build attaches the installers to the release.
 
 ## Features
 
