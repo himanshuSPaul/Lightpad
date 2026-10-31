@@ -142,9 +142,12 @@ function newTab({ path = null, text = "", saved = text, lang = null, encoding = 
   return tab;
 }
 
+let useClock = 0; // orders tabs by when they were last shown, for the Ctrl+Tab switcher
+
 function activate(tab) {
   if (current) current.state = view.state;
   current = tab;
+  tab.lastUsed = ++useClock;
   view.setState(tab.state);
   // Settings may have changed while this tab was in the background.
   view.dispatch({
@@ -635,6 +638,72 @@ $("st-lang").onclick = (e) => {
   openLanguagePicker();
 };
 
+// ---------- File switcher (Ctrl+Tab), most recently used first, like Notepad++ ----------
+
+const switcher = document.createElement("div");
+switcher.id = "switcher";
+switcher.hidden = true;
+document.body.append(switcher);
+let switchList = [];
+let switchAt = 0;
+
+function renderSwitcher() {
+  switcher.replaceChildren(
+    ...switchList.map((t, i) => {
+      const row = document.createElement("div");
+      row.className = "sw-row" + (i === switchAt ? " sel" : "") + (isDirty(t) ? " dirty" : "");
+      const name = document.createElement("span");
+      name.textContent = t.name;
+      const dir = document.createElement("small");
+      dir.textContent = t.path ? dirName(t.path) : "";
+      row.append(name, dir);
+      row.onmousedown = (e) => {
+        e.preventDefault();
+        switchAt = i;
+        finishSwitch();
+      };
+      return row;
+    })
+  );
+  switcher.querySelector(".sel")?.scrollIntoView({ block: "nearest" });
+}
+
+// Each Ctrl+Tab moves one file down the list (Shift moves up); letting go of Ctrl opens it.
+function stepSwitcher(back) {
+  if (tabs.length < 2) return;
+  if (switcher.hidden) {
+    switchList = [...tabs].sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
+    switchAt = 0;
+    switcher.hidden = false;
+  }
+  switchAt = (switchAt + (back ? -1 : 1) + switchList.length) % switchList.length;
+  renderSwitcher();
+}
+
+function finishSwitch() {
+  if (switcher.hidden) return;
+  switcher.hidden = true;
+  const tab = switchList[switchAt];
+  switchList = [];
+  if (tab && tabs.includes(tab)) activate(tab);
+}
+
+window.addEventListener("keyup", (e) => (e.key === "Control" || e.key === "Meta") && finishSwitch(), true);
+window.addEventListener("blur", () => (switcher.hidden = true));
+
+// Ctrl+PageDown / Ctrl+PageUp: the next / previous tab in tab-bar order.
+function stepTab(back) {
+  if (tabs.length < 2) return;
+  const i = tabs.indexOf(current) + (back ? -1 : 1);
+  activate(tabs[(i + tabs.length) % tabs.length]);
+}
+
+// Ctrl+1..8 opens that tab, Ctrl+9 the last one.
+function goToTab(n) {
+  const tab = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1];
+  if (tab) activate(tab);
+}
+
 const commands = {
   language: openLanguagePicker,
   new: () => activate(newTab()),
@@ -815,6 +884,24 @@ createMenubar([
       { label: "Restore Default Zoom", shortcut: "Ctrl+0", run: () => zoom("terminal", 0) },
     ],
   },
+  {
+    label: "Window",
+    items: () => [
+      { label: "Switch Files (recently used)", shortcut: "Ctrl+Tab", disabled: tabs.length < 2, run: () => {
+        stepSwitcher(false);
+        finishSwitch();
+      } },
+      { label: "Next Tab", shortcut: "Ctrl+PgDn", disabled: tabs.length < 2, run: () => stepTab(false) },
+      { label: "Previous Tab", shortcut: "Ctrl+PgUp", disabled: tabs.length < 2, run: () => stepTab(true) },
+      "-",
+      ...tabs.map((t, i) => ({
+        label: t.name + (isDirty(t) ? " •" : ""),
+        shortcut: i < 8 ? `Ctrl+${i + 1}` : i === tabs.length - 1 ? "Ctrl+9" : "",
+        checked: t === current,
+        run: () => activate(t),
+      })),
+    ],
+  },
 ]);
 
 // Drag the bar between editor and terminal to resize.
@@ -897,10 +984,10 @@ window.addEventListener(
     else if (ctrl && !e.shiftKey && e.code === "KeyW") cmd = () => closeTab(current);
     else if (e.altKey && e.code === "KeyZ") cmd = commands.wrap;
     else if (ctrl && e.shiftKey && e.code === "KeyL") cmd = commands.language;
-    else if (ctrl && e.code === "Tab" && tabs.length > 1) {
-      const i = tabs.indexOf(current) + (e.shiftKey ? -1 : 1);
-      cmd = () => activate(tabs[(i + tabs.length) % tabs.length]);
-    }
+    else if (ctrl && e.code === "Tab") cmd = () => stepSwitcher(e.shiftKey);
+    else if (ctrl && !e.shiftKey && !e.altKey && ["PageDown", "PageUp"].includes(e.code)) cmd = () => stepTab(e.code === "PageUp");
+    else if (ctrl && !e.shiftKey && !e.altKey && /^Digit[1-9]$/.test(e.code)) cmd = () => goToTab(+e.code.slice(5));
+    else if (e.key === "Escape" && !switcher.hidden) cmd = () => (switcher.hidden = true);
     if (cmd) {
       e.preventDefault();
       e.stopPropagation();

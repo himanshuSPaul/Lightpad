@@ -698,10 +698,10 @@ def t_theme():
     menu("View", "Dark Theme")
     assert js("return document.documentElement.dataset.theme") != before
 
-@test("Menus", "Alt+F/E/V/L/T open each menu; arrows and Escape work")
+@test("Menus", "Alt+F/E/V/L/T/W open each menu; arrows and Escape work")
 def t_menus():
     open_ws()
-    want = {"f": "New", "e": "Undo", "v": "Explorer", "l": "Plain Text", "t": "New Terminal"}
+    want = {"f": "New", "e": "Undo", "v": "Explorer", "l": "Plain Text", "t": "New Terminal", "w": "Switch Files (recently used)"}
     got = {}
     for k, first in want.items():
         keys(Keys.ALT, k)
@@ -714,7 +714,7 @@ def t_menus():
 def t_menu_errors():
     open_ws()
     errs = js("window.__errs=[]; window.addEventListener('error',e=>__errs.push(String(e.message))); window.addEventListener('unhandledrejection',e=>__errs.push(String(e.reason))); return 1")
-    for m in ["File", "Edit", "View", "Language", "Terminal"]:
+    for m in ["File", "Edit", "View", "Language", "Terminal", "Window"]:
         menu(m); keys(Keys.ESCAPE)
     assert js("return __errs") == [], js("return __errs")
 
@@ -855,6 +855,66 @@ def t_external_change_dirty():
     d = wait_dialog(1.5)
     if d: dismiss_dialog()
     assert read("a.txt") == "mine-v1", read("a.txt")
+
+
+# ---------- tests: switching between open files ----------
+
+def switcher_rows():
+    return js("const s=document.getElementById('switcher'); return s.hidden ? null : [...s.querySelectorAll('.sw-row')].map(r=>(r.classList.contains('sel')?'>':'')+r.querySelector('span').textContent)")
+
+def open_abc():
+    for n in "abc": write(f"{n}.txt", n)
+    open_ws()
+    for n in "abc": open_file(f"{n}.txt")
+
+@test("Switching", "Ctrl+Tab goes back to the previous file; again returns (most recently used order)")
+def t_switch_mru():
+    open_abc()
+    keys(Keys.CONTROL, Keys.TAB)
+    assert active_tab()["name"] == "b.txt", active_tab()
+    keys(Keys.CONTROL, Keys.TAB)
+    assert active_tab()["name"] == "c.txt", active_tab()
+
+@test("Switching", "Holding Ctrl and pressing Tab twice shows the list and picks the third file")
+def t_switch_hold():
+    open_abc()
+    ActionChains(app.d).key_down(Keys.CONTROL).send_keys(Keys.TAB).send_keys(Keys.TAB).perform(); time.sleep(0.4)
+    rows = switcher_rows()
+    ActionChains(app.d).key_up(Keys.CONTROL).perform(); time.sleep(0.5)
+    assert rows == ["c.txt", "b.txt", ">a.txt"], rows
+    assert switcher_rows() is None, "list still showing after Ctrl was released"
+    assert active_tab()["name"] == "a.txt", active_tab()
+
+@test("Switching", "Ctrl+Shift+Tab moves up the list; Escape cancels")
+def t_switch_back_escape():
+    open_abc()
+    ActionChains(app.d).key_down(Keys.CONTROL).key_down(Keys.SHIFT).send_keys(Keys.TAB).key_up(Keys.SHIFT).perform(); time.sleep(0.4)
+    rows = switcher_rows()
+    ActionChains(app.d).send_keys(Keys.ESCAPE).key_up(Keys.CONTROL).perform(); time.sleep(0.5)
+    assert rows == ["c.txt", "b.txt", ">a.txt"], rows
+    assert active_tab()["name"] == "c.txt", "Escape still switched"
+
+@test("Switching", "Ctrl+PageDown / Ctrl+PageUp follow the tab bar; Ctrl+1 and Ctrl+9 jump to first and last")
+def t_switch_tabbar():
+    open_abc()
+    keys(Keys.CONTROL, Keys.PAGE_DOWN); assert active_tab()["name"] == "a.txt", active_tab()  # wraps around
+    keys(Keys.CONTROL, Keys.PAGE_UP); assert active_tab()["name"] == "c.txt", active_tab()
+    keys(Keys.CONTROL, "1"); assert active_tab()["name"] == "a.txt", active_tab()
+    keys(Keys.CONTROL, "2"); assert active_tab()["name"] == "b.txt", active_tab()
+    keys(Keys.CONTROL, "9"); assert active_tab()["name"] == "c.txt", active_tab()
+
+@test("Switching", "Ctrl+Tab works while typing in the terminal")
+def t_switch_from_terminal():
+    open_abc()
+    keys(Keys.CONTROL, "`"); time.sleep(2)
+    keys(Keys.CONTROL, Keys.TAB)
+    assert active_tab()["name"] == "b.txt", active_tab()
+
+@test("Switching", "Window menu lists the open files and switches to the one clicked")
+def t_window_menu():
+    open_abc()
+    menu("Window", "a.txt")
+    assert active_tab()["name"] == "a.txt", active_tab()
 
 
 if __name__ == "__main__":

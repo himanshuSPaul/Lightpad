@@ -46,7 +46,9 @@ To make a new release, bump `version` in `src-tauri/tauri.conf.json`, then push 
 | Ctrl+Shift+L | Choose language |
 | Ctrl+S / Ctrl+Shift+S | Save / Save As |
 | Ctrl+W, middle-click tab | Close tab |
-| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
+| Ctrl+Tab / Ctrl+Shift+Tab | Switch files, most recently used first (hold Ctrl and tap Tab to go further back) |
+| Ctrl+PgDn / Ctrl+PgUp | Next / previous tab in tab-bar order |
+| Ctrl+1..8 / Ctrl+9 | Go to tab 1..8 / the last tab |
 | Ctrl+F | Find and replace |
 | Alt+Z | Toggle word wrap |
 | Ctrl+` / Ctrl+Shift+` | Show / hide terminal, new terminal |
@@ -56,7 +58,7 @@ To make a new release, bump `version` in `src-tauri/tauri.conf.json`, then push 
 | Alt+0 / Alt+Shift+0 | Fold all / unfold all |
 | Alt+1..8 / Alt+Shift+1..8 | Fold / unfold a level |
 | Ctrl+Alt+F / Ctrl+Alt+Shift+F | Fold / unfold the current block |
-| Alt+F, Alt+E, Alt+V, Alt+L, Alt+T | Open the File, Edit, View, Language, Terminal menus |
+| Alt+F, Alt+E, Alt+V, Alt+L, Alt+T, Alt+W | Open the File, Edit, View, Language, Terminal, Window menus |
 | Ctrl+Shift+C / V | Copy / paste in terminal |
 
 ## Build and run
