@@ -6,7 +6,7 @@ The release binary is about 4 MB.
 
 ![Lightpad](docs/screenshots/03-overview.png)
 
-See the **[user guide](docs/USER_GUIDE.md)** for a tour of every menu and feature, with screenshots.
+See the **[user guide](docs/USER_GUIDE.md)** for a tour of every menu and feature, with screenshots, and the **[release log](CHANGELOG.md)** for what changed in each version.
 
 ## Download
 

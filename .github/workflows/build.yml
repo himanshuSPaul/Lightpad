@@ -54,10 +54,18 @@ jobs:
       - if: runner.os == 'Windows'
         shell: pwsh
         run: Compress-Archive -Path src-tauri/target/release/lightpad.exe -DestinationPath Lightpad-portable-windows-x64.zip
+      # The release notes are this version's section of CHANGELOG.md.
+      - if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+        shell: bash
+        env:
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: awk -v h="## $TAG " 'index($0, h) == 1 {on=1; next} /^## / {on=0} on' CHANGELOG.md > release-notes.md
       - if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
+          name: Lightpad ${{ inputs.release_tag || github.ref_name }}
+          body_path: release-notes.md
           target_commitish: ${{ github.sha }}
           files: |
             src-tauri/target/release/bundle/msi/*.msi

@@ -829,7 +829,10 @@ def t_save_as_new():
     keys(Keys.CONTROL, "s")
     assert wait_dialog(), "no save dialog"
     time.sleep(1)
-    sh(f"xdotool key ctrl+a && xdotool type --delay 20 '{WS}/saved-new.py' && xdotool key Return"); time.sleep(1.5)
+    # Paste the path: xdotool type can drop characters in a GTK dialog under Xvfb.
+    subprocess.run(f"printf %s '{WS}/saved-new.py' | xclip -selection clipboard >/dev/null 2>&1 &", shell=True)
+    time.sleep(0.5)
+    sh("xdotool key ctrl+a ctrl+v Return"); time.sleep(1.5)
     assert os.path.exists(WS + "/saved-new.py"), os.listdir(WS)
     assert read("saved-new.py") == "fresh text"
     assert active_tab()["name"] == "saved-new.py" and status()["lang"] == "Python", (tabs(), status())

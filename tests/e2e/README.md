@@ -18,3 +18,14 @@ DISPLAY=:99 python3 tests/e2e/suite.py t_rename   # tests whose name contains t_
 Results go to `results.json` and screenshots of failures to `fail-shots/`, both in
 `$LIGHTPAD_QA_DIR` (default `/tmp/lightpad-e2e`). The tests use their own home folder there, so
 your own Lightpad settings aren't touched.
+
+## Chromium checks
+
+`tests/chromium/smoke.cjs` runs 22 UI checks in Chromium, the engine behind WebView2 on Windows,
+with the Rust backend replaced by an in-memory file system. It catches problems that only show on
+Windows, which the WebKit suite above can't see:
+
+```sh
+npx vite --port 1420 &
+node tests/chromium/smoke.cjs
+```
