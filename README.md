@@ -21,7 +21,7 @@ To make a new release, bump `version` in `src-tauri/tauri.conf.json`, then push 
 
 ## Features
 
-- File explorer sidebar: open a folder, expand folders, click a file to open it.
+- File explorer sidebar: open a folder, expand folders, click a file to open it (double-click to start typing in it).
   Right-click for New File/Folder, Cut, Copy, Paste, Rename (F2), Delete (to the Recycle Bin),
   Copy Path, Copy Relative Path, Open in Terminal, Save, Save As, Pin Tab and Close
 - Tabs, open / save / save as, recent files, drag-and-drop files or folders to open

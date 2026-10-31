@@ -19,7 +19,7 @@ next to each item; the full table is in the [README](../README.md#shortcuts).
 
 ![Lightpad main window](screenshots/03-overview.png)
 
-- **Explorer** (top left): the open folder as a tree. Click a file to open it.
+- **Explorer** (top left): the open folder as a tree. Click a file to open it; the keyboard stays in the explorer, so Delete, F2 and Ctrl+C act on that file. Double-click a file, or press Enter, to start typing in it.
 - **Document List** (bottom left): every open file. Click a column head to sort by
   name or extension. The disk icon is blue when the file is saved and red when it
   has unsaved changes.

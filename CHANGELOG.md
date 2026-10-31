@@ -15,6 +15,9 @@
 
 ### Fixed
 - Rename, New File and New Folder did nothing on Windows: pressing Enter cancelled the name box.
+- Clicking a file in the explorer and pressing Delete erased text in the file instead of deleting
+  the file. A click now opens the file and keeps the keyboard in the explorer, as in VS Code, so
+  Delete, F2 and Ctrl+C act on the file. Double-click a file (or press Enter) to start typing in it.
 - Saving silently overwrote changes another program had made to the same file.
 - On Linux, renaming `a.txt` to `A.txt` overwrote an existing `A.txt`.
 - Copying a folder that contains a link to itself recursed and left a half-made copy.

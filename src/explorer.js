@@ -90,10 +90,14 @@ async function renderDir(path, depth, container) {
       el.oncontextmenu = (e) => showMenu(e, entry);
       if (expanded.has(entry.path)) await renderDir(entry.path, depth + 1, kids);
     } else {
-      el.onclick = () => {
+      // A click opens the file but leaves the keyboard in the explorer, like VS Code, so Delete, F2
+      // and Ctrl+C act on the file rather than on its text. Double-click moves to the editor.
+      el.onclick = async () => {
         select(entry.path);
-        onOpen(entry.path);
+        await onOpen(entry.path);
+        tree.focus();
       };
+      el.ondblclick = () => actions.focusEditor();
       el.oncontextmenu = (e) => showMenu(e, entry);
     }
   }
@@ -345,7 +349,7 @@ tree.addEventListener("keydown", (e) => {
   else if (ctrl && !e.shiftKey && e.code === "KeyC") act = () => setClipboard(selected, false);
   else if (ctrl && !e.shiftKey && e.code === "KeyX") act = () => setClipboard(selected, true);
   else if (ctrl && !e.shiftKey && e.code === "KeyV") act = () => paste(isDir ? selected : parentDir(selected));
-  else if (e.key === "Enter") act = () => el?.click();
+  else if (e.key === "Enter") act = isDir ? () => el?.click() : async () => (await onOpen(selected), actions.focusEditor());
   if (act) {
     e.preventDefault();
     e.stopPropagation();

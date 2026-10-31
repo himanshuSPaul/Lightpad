@@ -200,6 +200,30 @@ const assert = (cond, msg) => {
     assert((await disk(ROOT + "\\todo - Copy.txt")) === undefined, "not deleted");
     assert(!(await tabNames()).includes("todo - Copy.txt"), "tab left open");
   });
+  await check("Click a file, press Delete: deletes the file, not text in it", async () => {
+    await page.evaluate(() => window.__files.set("C:\\proj\\gone.txt", "keep my text"));
+    await page.click("[data-cmd=refreshTree]");
+    await page.waitForTimeout(300);
+    await page.evaluate(() => (window.__dialogAnswer = "Delete"));
+    await node("gone.txt").click();
+    await page.waitForTimeout(300);
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(400);
+    assert((await disk(ROOT + "\\gone.txt")) === undefined, "file not deleted");
+    assert(!(await tabNames()).includes("gone.txt"), "tab left open");
+  });
+  await check("Click a file, press F2: renames it", async () => {
+    await node("data.json").click();
+    await page.waitForTimeout(300);
+    await page.keyboard.press("F2");
+    await prompt("info.json");
+    assert(await disk(ROOT + "\\info.json"), "not renamed");
+  });
+  await check("Double-click a file moves the cursor into the editor", async () => {
+    await node("info.json").dblclick();
+    await page.waitForTimeout(300);
+    assert(await page.evaluate(() => document.activeElement.classList.contains("cm-content")), "editor not focused");
+  });
   await check("Every menu opens with Alt+letter and closes with Escape", async () => {
     for (const k of ["f", "e", "v", "l", "t", "w"]) {
       await page.keyboard.press("Alt+" + k);
@@ -209,15 +233,15 @@ const assert = (cond, msg) => {
     }
   });
   await check("Ctrl+Tab switches to the previous file", async () => {
-    await node("data.json").click();
+    await node("info.json").click();
     await page.waitForTimeout(300);
     await page.keyboard.press("Control+Tab");
     await page.waitForTimeout(250);
     const now = await active();
-    assert(now !== "data.json", now);
+    assert(now !== "info.json", now);
     await page.keyboard.press("Control+Tab");
     await page.waitForTimeout(250);
-    assert((await active()) === "data.json", await active());
+    assert((await active()) === "info.json", await active());
   });
   await check("Holding Ctrl shows the switcher list; releasing opens the pick", async () => {
     await page.keyboard.down("Control");

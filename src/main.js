@@ -1032,6 +1032,7 @@ explorer.init({
   },
   openFolder,
   showError,
+  focusEditor: () => view.focus(),
   confirm: ask,
   tabFor: (path) => tabs.find((t) => t.path === path),
   save: (tab) => save(tab),
