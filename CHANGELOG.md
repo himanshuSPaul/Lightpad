@@ -1,5 +1,11 @@
 # Release log
 
+## v0.1.2 (2026-10-31)
+
+### Fixed
+- Ctrl+/ (comment and uncomment the selected lines) now works in batch files, using `REM`.
+- Ctrl+/ on the number pad also toggles comments. It used to reset the zoom.
+
 ## v0.1.1 (2026-10-31)
 
 ### New

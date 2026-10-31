@@ -920,5 +920,29 @@ def t_window_menu():
     assert active_tab()["name"] == "a.txt", active_tab()
 
 
+# ---------- tests: commenting several lines ----------
+
+@test("Editing", "Ctrl+/ comments and uncomments several selected lines")
+def t_comment_multi():
+    write("m.py", "a = 1\nb = 2\nc = 3\n")
+    open_ws(); open_file("m.py")
+    ed = editor()
+    ed.send_keys(Keys.CONTROL, Keys.HOME)
+    ed.send_keys(Keys.SHIFT, Keys.ARROW_DOWN, Keys.ARROW_DOWN, Keys.END)
+    ed.send_keys(Keys.CONTROL, "/"); time.sleep(0.3); keys(Keys.CONTROL, "s")
+    commented = read("m.py")
+    ed.send_keys(Keys.CONTROL, "/"); time.sleep(0.3); keys(Keys.CONTROL, "s")
+    assert commented == "# a = 1\n# b = 2\n# c = 3\n", repr(commented)
+    assert read("m.py") == "a = 1\nb = 2\nc = 3\n", repr(read("m.py"))
+
+@test("Editing", "Ctrl+/ in a batch file uses REM")
+def t_comment_bat():
+    write("r.bat", "@echo off\necho hi")
+    open_ws(); open_file("r.bat")
+    ed = editor()
+    ed.send_keys(Keys.CONTROL, "a"); ed.send_keys(Keys.CONTROL, "/"); time.sleep(0.3); keys(Keys.CONTROL, "s")
+    assert read("r.bat") == "REM @echo off\nREM echo hi", repr(read("r.bat"))
+
+
 if __name__ == "__main__":
     run(sys.argv[1] if len(sys.argv) > 1 else None)

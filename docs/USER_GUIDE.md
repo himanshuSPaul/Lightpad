@@ -67,6 +67,11 @@ Undo, Redo, Cut, Copy, Paste and Select All, plus:
 | Go to Line... | Ctrl+G |
 | Toggle Comment | Ctrl+/ |
 
+To comment several lines at once, select them and press **Ctrl+/** (the / on the number pad works
+too). Every line the selection touches gets the language's comment mark: `#` in Python, `//` in
+JavaScript and C#, `--` in SQL, `REM` in batch files. Press Ctrl+/ again to uncomment them.
+Shift+Alt+A wraps the selection in a block comment such as `/* ... */`.
+
 ## View menu
 
 ![View menu](screenshots/12-menu-view.png)

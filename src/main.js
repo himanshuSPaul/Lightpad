@@ -967,7 +967,9 @@ window.addEventListener(
     if (ctrl && e.code === "Backquote") cmd = e.shiftKey ? newTerminalHere : commands.terminal;
     else if (ctrl && !e.altKey && ["Equal", "NumpadAdd"].includes(e.code)) cmd = () => zoom(lastPane, 1);
     else if (ctrl && !e.altKey && ["Minus", "NumpadSubtract"].includes(e.code)) cmd = () => zoom(lastPane, -1);
-    else if (ctrl && !e.altKey && ["Digit0", "Numpad0", "NumpadDivide"].includes(e.code)) cmd = () => zoom(lastPane, 0);
+    else if (ctrl && !e.altKey && ["Digit0", "Numpad0"].includes(e.code)) cmd = () => zoom(lastPane, 0);
+    // The / on the number pad toggles comments too (the editor's own keymap handles the main / key).
+    else if (ctrl && !e.altKey && e.code === "NumpadDivide" && view.hasFocus) cmd = editorCmd(toggleComment);
     else if (ctrl && e.altKey && e.code === "KeyS") cmd = saveAll;
     else if (ctrl && e.altKey && e.code === "KeyF") cmd = editorCmd(e.shiftKey ? unfoldCurrent : foldCurrent);
     else if (e.altKey && !ctrl && /^Digit[0-8]$/.test(e.code) && lastPane === "editor") {

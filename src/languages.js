@@ -9,6 +9,7 @@ const batchKeywords = new Set(
 );
 const batch = StreamLanguage.define({
   name: "batch",
+  languageData: { commentTokens: { line: "REM" } }, // so Ctrl+/ comments lines with REM, like Notepad++
   startState: () => ({ lineStart: true }),
   token(stream, state) {
     if (stream.sol()) state.lineStart = true;

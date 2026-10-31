@@ -15,6 +15,8 @@ function mockBackend(root) {
     [root + "\\notes.txt", "cat dog cat\n"],
     [root + "\\data.json", '{\n  "a": [1, 2],\n  "b": 3\n}\n'],
     [root + "\\sub\\inner.md", "# Inner\n"],
+    [root + "\\multi.py", "a = 1\nb = 2\nc = 3\n"],
+    [root + "\\run.bat", "@echo off\necho hi\n"],
   ]);
   const dirs = new Set([root, root + "\\sub"]);
   const parent = (p) => p.replace(/\\[^\\]*$/, "");
@@ -317,6 +319,36 @@ const assert = (cond, msg) => {
     await page.keyboard.press("Control+w");
     await page.waitForTimeout(300);
     assert((await tabNames()).length === n, "tab closed after Cancel");
+  });
+  const commentCheck = async (file, key, want) => {
+    await node(file).dblclick();
+    await page.waitForTimeout(300);
+    await page.keyboard.press("Control+Home");
+    await page.keyboard.press("Shift+ArrowDown");
+    await page.keyboard.press("Shift+ArrowDown");
+    await page.keyboard.press("Shift+End"); // through line 3 (a selection ending at a line's start leaves that line out)
+    await page.keyboard.press(key);
+    await page.keyboard.press("Control+s");
+    await page.waitForTimeout(300);
+    const commented = await disk(ROOT + "\\" + file);
+    await page.keyboard.press(key);
+    await page.keyboard.press("Control+s");
+    await page.waitForTimeout(300);
+    const back = await disk(ROOT + "\\" + file);
+    assert(commented === want, JSON.stringify(commented));
+    return back;
+  };
+  await check("Ctrl+/ comments and uncomments several Python lines", async () => {
+    const back = await commentCheck("multi.py", "Control+Slash", "# a = 1\n# b = 2\n# c = 3\n");
+    assert(back === "a = 1\nb = 2\nc = 3\n", JSON.stringify(back));
+  });
+  await check("Ctrl+/ on the number pad does the same", async () => {
+    const back = await commentCheck("multi.py", "Control+NumpadDivide", "# a = 1\n# b = 2\n# c = 3\n");
+    assert(back === "a = 1\nb = 2\nc = 3\n", JSON.stringify(back));
+  });
+  await check("Ctrl+/ in a .bat file uses REM", async () => {
+    const back = await commentCheck("run.bat", "Control+Slash", "REM @echo off\nREM echo hi\n");
+    assert(back === "@echo off\necho hi\n", JSON.stringify(back));
   });
   await check("No script errors during the run", async () => {
     assert(errors.length === 0, errors.join(" | "));
