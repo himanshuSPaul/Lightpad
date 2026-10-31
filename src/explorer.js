@@ -166,9 +166,14 @@ function askText(label, initial = "", selectStem = false) {
     // Select the name without its extension, like Windows Explorer.
     const dot = initial.lastIndexOf(".");
     input.setSelectionRange(0, selectStem && dot > 0 ? dot : initial.length);
+    let finished = false;
     const done = (value) => {
-      box.remove();
+      // Removing the box fires blur in Chromium (Windows' WebView2), which would call done again
+      // and answer "cancelled": settle first, and only once.
+      if (finished) return;
+      finished = true;
       resolve(value);
+      box.remove();
     };
     input.onkeydown = (e) => {
       e.stopPropagation();
