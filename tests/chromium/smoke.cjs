@@ -65,6 +65,8 @@ function mockBackend(root) {
     "plugin:dialog|message": (args) => (window.__dialogs.push(args.message), window.__dialogAnswer),
   };
   window.__files = files;
+  window.__clip = null;
+  navigator.clipboard.writeText = async (t) => void (window.__clip = t);
   window.__TAURI_INTERNALS__ = {
     transformCallback: (f) => {
       const id = ++cb;
@@ -225,6 +227,29 @@ const assert = (cond, msg) => {
     await node("info.json").dblclick();
     await page.waitForTimeout(300);
     assert(await page.evaluate(() => document.activeElement.classList.contains("cm-content")), "editor not focused");
+  });
+  await check("Copy Parent Folder Path, Copy Path and Copy Relative Path", async () => {
+    const clip = () => page.evaluate(() => window.__clip);
+    if (!(await node("inner.md").count())) {
+      await node("sub").click();
+      await page.waitForTimeout(300);
+    }
+    const items = await (async () => {
+      await node("inner.md").click({ button: "right" });
+      const labels = await page.$$eval("#ctx-menu li:not(.ctx-sep) span", (e) => e.map((x) => x.textContent));
+      await page.keyboard.press("Escape");
+      return labels;
+    })();
+    const at = items.indexOf("Copy Relative Path");
+    assert(items[at + 1] === "Copy Parent Folder Path", JSON.stringify(items));
+    await ctx("inner.md", "Copy Parent Folder Path");
+    assert((await clip()) === ROOT + "\\sub", await clip());
+    await ctx("inner.md", "Copy Path");
+    assert((await clip()) === ROOT + "\\sub\\inner.md", await clip());
+    await ctx("inner.md", "Copy Relative Path");
+    assert((await clip()) === "sub\\inner.md", await clip());
+    await ctx("sub", "Copy Parent Folder Path");
+    assert((await clip()) === ROOT, await clip());
   });
   await check("Every menu opens with Alt+letter and closes with Escape", async () => {
     for (const k of ["f", "e", "v", "l", "t", "w"]) {

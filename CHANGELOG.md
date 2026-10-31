@@ -2,6 +2,10 @@
 
 ## v0.1.2 (2026-10-31)
 
+### New
+- **Copy Parent Folder Path** in the explorer's right-click menu, below Copy Relative Path. It
+  copies the path of the folder that holds the file, such as `D:\Learning\Temp\Practice\AI`.
+
 ### Fixed
 - Ctrl+/ (comment and uncomment the selected lines) now works in batch files, using `REM`.
 - Ctrl+/ on the number pad also toggles comments. It used to reset the zoom.

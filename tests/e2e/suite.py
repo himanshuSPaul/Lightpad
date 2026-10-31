@@ -536,7 +536,7 @@ def t_delete():
     assert glob.glob(HOME + "/.local/share/Trash/files/trash-me*"), "not in the trash"
     assert not any(t["name"] == "trash-me.txt" for t in tabs()), "tab left open"
 
-@test("Explorer", "Copy Path and Copy Relative Path")
+@test("Explorer", "Copy Path, Copy Relative Path and Copy Parent Folder Path")
 def t_copy_paths():
     write("sub/x.py", "x")
     open_ws(); expand("sub")
@@ -544,6 +544,8 @@ def t_copy_paths():
     assert clipboard() == WS + "/sub/x.py", clipboard()
     ctx(WS + "/sub/x.py", "Copy Relative Path")
     assert clipboard() == "sub/x.py", clipboard()
+    ctx(WS + "/sub/x.py", "Copy Parent Folder Path")
+    assert clipboard() == WS + "/sub", clipboard()
 
 @test("Explorer", "Copy Relative Path for a folder whose name starts like the open folder")
 def t_rel_prefix():

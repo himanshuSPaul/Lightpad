@@ -18,6 +18,11 @@ const signature = (container) =>
 
 const baseName = (p) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
 const parentDir = (p) => p.replace(/[\\/][^\\/]*$/, "");
+// The folder that holds `p`, as a path to paste elsewhere: a drive root keeps its slash ("D:\\").
+const parentFolder = (p) => {
+  const dir = parentDir(p.replace(/[\\/]+$/, ""));
+  return /^[A-Za-z]:$/.test(dir) ? dir + "\\" : dir || "/";
+};
 
 const ICON_COLORS = {
   py: "#3b82f6", js: "#eab308", mjs: "#eab308", ts: "#3178c6", tsx: "#3178c6", jsx: "#06b6d4",
@@ -280,6 +285,7 @@ function menuFor(entry) {
     "-",
     { label: "Copy Path", key: "Shift+Alt+C", run: () => copyText(path) },
     { label: "Copy Relative Path", key: "Ctrl+Shift+Alt+C", run: () => copyText(relativePath(path)) },
+    { label: "Copy Parent Folder Path", run: () => copyText(parentFolder(path)) },
     ...(isRoot ? [] : [
       "-",
       { label: "Rename...", key: "F2", run: () => rename(path) },

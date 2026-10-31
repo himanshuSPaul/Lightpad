@@ -154,6 +154,7 @@ Right-click a file:
 | Cut / Copy / Paste | Ctrl+X / Ctrl+C / Ctrl+V | Move or copy files and folders. A name clash gets " - Copy" added, nothing is overwritten |
 | Copy Path | Shift+Alt+C | Copy the full path |
 | Copy Relative Path | Ctrl+Shift+Alt+C | Copy the path from the open folder |
+| Copy Parent Folder Path | | Copy the path of the folder that holds it |
 | Rename... | F2 | Rename in place (open tabs follow the new name) |
 | Delete | Delete | Move to the Recycle Bin, after asking |
 | Save / Save As... | | Save the file's open tab |
